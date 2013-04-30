@@ -3,6 +3,8 @@
 #include <vector>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ppl.h>
+
 #include "Config.h"
 #include "Renderer.h"
 #include "Graphics.h"
@@ -644,19 +646,6 @@ VideoBuffer * Renderer::WallIcon(int wallID, int width, int height)
 	return newTexture;
 }
 
-void Renderer::DrawBlob(int x, int y, unsigned char cr, unsigned char cg, unsigned char cb)
-{
-	blendpixel(x+1, y, cr, cg, cb, 112);
-	blendpixel(x-1, y, cr, cg, cb, 112);
-	blendpixel(x, y+1, cr, cg, cb, 112);
-	blendpixel(x, y-1, cr, cg, cb, 112);
-
-	blendpixel(x+1, y-1, cr, cg, cb, 64);
-	blendpixel(x-1, y-1, cr, cg, cb, 64);
-	blendpixel(x+1, y+1, cr, cg, cb, 64);
-	blendpixel(x-1, y+1, cr, cg, cb, 64);
-}
-
 void Renderer::DrawWalls()
 {
 #ifdef OGLR
@@ -958,38 +947,46 @@ void Renderer::DrawSigns()
 void Renderer::render_gravlensing(pixel * source)
 {
 #ifndef OGLR
-	int nx, ny, rx, ry, gx, gy, bx, by, co;
-	int r, g, b;
-	pixel t;
 	pixel *src = source;
 	pixel *dst = vid;
-	for(nx = 0; nx < XRES; nx++)
+	concurrency::parallel_for(0, YRES * XRES, [=](int i)
 	{
-		for(ny = 0; ny < YRES; ny++)
-		{
-			co = (ny/CELL)*(XRES/CELL)+(nx/CELL);
-			rx = (int)(nx-sim->gravx[co]*0.75f+0.5f);
-			ry = (int)(ny-sim->gravy[co]*0.75f+0.5f);
-			gx = (int)(nx-sim->gravx[co]*0.875f+0.5f);
-			gy = (int)(ny-sim->gravy[co]*0.875f+0.5f);
-			bx = (int)(nx-sim->gravx[co]+0.5f);
-			by = (int)(ny-sim->gravy[co]+0.5f);
-			if(rx > 0 && rx < XRES && ry > 0 && ry < YRES && gx > 0 && gx < XRES && gy > 0 && gy < YRES && bx > 0 && bx < XRES && by > 0 && by < YRES)
-			{
-				t = dst[ny*(VIDXRES)+nx];
-				r = PIXR(src[ry*(VIDXRES)+rx]) + PIXR(t);
-				g = PIXG(src[gy*(VIDXRES)+gx]) + PIXG(t);
-				b = PIXB(src[by*(VIDXRES)+bx]) + PIXB(t);
-				if (r>255)
-					r = 255;
-				if (g>255)
-					g = 255;
-				if (b>255)
-					b = 255;
-				dst[ny*(VIDXRES)+nx] = PIXRGB(r,g,b);
-			}
-		}
-	}
+			// i is the index into the source array
+		int nx = i % XRES;
+		int ny = i / XRES;
+		
+		int co = (ny/CELL)*(XRES/CELL)+(nx/CELL);
+		int rx = (int)(nx-sim->gravx[co]*0.75f+0.5f);
+		if (rx <= 0 || rx >= XRES)
+			return;
+		int ry = (int)(ny-sim->gravy[co]*0.75f+0.5f);
+		if (ry <= 0 || ry >= YRES)
+			return;
+		int gx = (int)(nx-sim->gravx[co]*0.875f+0.5f);
+		if (gx <= 0 || gx >= XRES)
+			return;
+		int gy = (int)(ny-sim->gravy[co]*0.875f+0.5f);
+		if (gy <= 0 || gy >= YRES)
+			return;
+		int bx = (int)(nx-sim->gravx[co]+0.5f);
+		if (bx <= 0 || bx >= XRES)
+			return;
+		int by = (int)(ny-sim->gravy[co]+0.5f);
+		if (by <= 0 || by >= YRES)
+			return;
+
+		pixel t = dst[ny * (VIDXRES) + nx];
+		int r = PIXR(src[ry*(VIDXRES)+rx]) + PIXR(t);
+		int g = PIXG(src[gy*(VIDXRES)+gx]) + PIXG(t);
+		int b = PIXB(src[by*(VIDXRES)+bx]) + PIXB(t);
+		if (r>255)
+			r = 255;
+		if (g>255)
+			g = 255;
+		if (b>255)
+			b = 255;
+		dst[ny * (VIDXRES) + nx] = PIXRGB(r,g,b);
+	});
 #endif
 }
 
@@ -998,34 +995,45 @@ void Renderer::render_fire()
 #ifndef OGLR
 	if(!(render_mode & FIREMODE))
 		return;
-	int i,j,x,y,r,g,b,nx,ny;
-	for (j=0; j<YRES/CELL; j++)
-		for (i=0; i<XRES/CELL; i++)
+
+	for (int j = 0; j < YRES / CELL; j++)
+		for (int i = 0; i < XRES / CELL; i++)
 		{
-			r = fire_r[j][i];
-			g = fire_g[j][i];
-			b = fire_b[j][i];
+			int r = fire_r[j][i];
+			int g = fire_g[j][i];
+			int b = fire_b[j][i];
 			if (r || g || b)
-				for (y=-CELL; y<2*CELL; y++)
-					for (x=-CELL; x<2*CELL; x++)
-						addpixel(i*CELL+x, j*CELL+y, r, g, b, fire_alpha[y+CELL][x+CELL]);
+			{
+				int iCell = i * CELL;
+				int jCell = j * CELL;
+				for (int dy = -CELL; dy < 2 * CELL; dy++)
+					for (int dx = -CELL; dx < 2 * CELL; dx++)
+						addpixel(iCell + dx , jCell + dy, r, g, b, fire_alpha[dy + CELL][dx + CELL]);
+			}
 			r *= 8;
 			g *= 8;
 			b *= 8;
-			for (y=-1; y<2; y++)
-				for (x=-1; x<2; x++)
-					if ((x || y) && i+x>=0 && j+y>=0 && i+x<XRES/CELL && j+y<YRES/CELL)
+			for (int dy = -1; dy < 2; dy++)
+			{
+				if (j + dy < 0 || j + dy >= YRES / CELL)
+					continue;
+
+				for (int dx = -1; dx < 2; dx++)
+				{
+					if ((dx || dy) && i + dx >= 0 && i + dx < XRES / CELL)
 					{
-						r += fire_r[j+y][i+x];
-						g += fire_g[j+y][i+x];
-						b += fire_b[j+y][i+x];
+						r += fire_r[j + dy][i + dx];
+						g += fire_g[j + dy][i + dx];
+						b += fire_b[j + dy][i + dx];
 					}
+				}
+			}
 			r /= 16;
 			g /= 16;
 			b /= 16;
-			fire_r[j][i] = r>4 ? r-4 : 0;
-			fire_g[j][i] = g>4 ? g-4 : 0;
-			fire_b[j][i] = b>4 ? b-4 : 0;
+			fire_r[j][i] = r > 4 ? r - 4 : 0;
+			fire_g[j][i] = g > 4 ? g - 4 : 0;
+			fire_b[j][i] = b > 4 ? b - 4 : 0;
 		}
 #endif
 }
@@ -1115,6 +1123,186 @@ void Renderer::prepare_alpha(int size, float intensity)
 #endif
 }
 
+#include <ppl.h>
+#include <ppltasks.h>
+
+template <int AuraSize, Renderer::AuraPixelFunction PixelFunction>
+void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize])
+{
+/*	auto drawglowline = [&](int xMul, int yMul)
+	{
+		for (int dy = 1; dy < (yMul != 2 ? AuraSize : 0); ++dy)
+			for (int dx = 1; dx < (xMul != 2 ? AuraSize : 0); ++dx)
+				render->addpixel(nx + xMul * dx, ny + yMul * dy, colr, colg, colb, colas[dx + dy - 1]);
+	};
+	auto drawglowround = [&](int xMul, int yMul)
+	{
+		for (int dy = 1; dy < AuraSize; ++dy)
+			for (int dx = 1; dx < AuraSize; ++dx)
+				render->addpixel(nx + xMul * dx, ny + yMul * dy, colr, colg, colb, rounded[dy][dx]);
+	};*/
+
+		// Check for elements of the same type in each direction to know where we need to draw an aura
+	bool left = (sim->pmap[ny][nx - 1] & 0xFF) != t;
+	bool right = (sim->pmap[ny][nx + 1] & 0xFF) != t;
+	bool top = (sim->pmap[ny - 1][nx] & 0xFF) != t;
+	bool bottom = (sim->pmap[ny + 1][nx] & 0xFF) != t;
+
+		// Draw in each empty direction
+	if (left)
+	{
+		for (int x = 1; x < AuraSize; ++x)
+			(this->*PixelFunction)(nx - x, ny, colr, colg, colb, colas[x]);
+	}
+	if (right)
+	{
+		for (int x = 1; x < AuraSize; ++x)
+			(this->*PixelFunction)(nx + x, ny, colr, colg, colb, colas[x]);
+	}
+	if (top)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			(this->*PixelFunction)(nx, ny - y, colr, colg, colb, colas[y]);
+	}
+	if (bottom)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y]);
+	}
+		// Fill in the corners
+	if (left && top)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			for (int x = 1; x < AuraSize; ++x)
+				(this->*PixelFunction)(nx - x, ny - y, colr, colg, colb, rounded[y][x]);
+	}
+	if (left && bottom)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			for (int x = 1; x < AuraSize; ++x)
+				(this->*PixelFunction)(nx - x, ny + y, colr, colg, colb, rounded[y][x]);
+	}
+	if (right && top)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			for (int x = 1; x < AuraSize; ++x)
+				(this->*PixelFunction)(nx + x, ny - y, colr, colg, colb, rounded[y][x]);
+	}
+	if (right && bottom)
+	{
+		for (int y = 1; y < AuraSize; ++y)
+			for (int x = 1; x < AuraSize; ++x)
+				(this->*PixelFunction)(nx + x, ny + y, colr, colg, colb, rounded[y][x]);
+	}
+}
+
+void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, int cola)
+{
+	const int GlowSize = 4;
+	int (*colas);
+	int (*rounded)[GlowSize];
+
+	if (cola == 255)
+	{
+		static int _colas[7] = {255, 160, 48, 24, 16, 5, 0};
+		static int _rounded[GlowSize][GlowSize] = 
+		{
+			{0, 0, 0, 0},
+			{0, _colas[2], _colas[2], _colas[3]},
+			{0, _colas[2], _colas[3], _colas[4]},
+			{0, _colas[3], _colas[4], _colas[5]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	else
+	{
+/*		int _colas[GlowSize] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _rounded[GlowSize][GlowSize] = 
+		{
+			{0, 0, 0, 0, 0, 0},
+			{0, colas[2], colas[2], colas[3], colas[4], colas[5]},
+			{0, colas[2], colas[3], colas[3], colas[5], colas[5]},
+			{0, colas[3], colas[3], colas[4], colas[5], colas[5]},
+			{0, colas[4], colas[5], colas[5], colas[5], colas[6]},
+			{0, colas[5], colas[5], colas[5], colas[6], colas[6]},
+		};*/
+		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _rounded[GlowSize][GlowSize] = 
+		{
+			{0, 0, 0, 0},
+			{0, _colas[2], _colas[2], _colas[3]},
+			{0, _colas[2], _colas[3], _colas[4]},
+			{0, _colas[3], _colas[4], _colas[5]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	render_aura<GlowSize, &Renderer::addpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
+
+	addpixel(nx, ny, colr, colg, colb, cola);
+}
+
+void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, int cola)
+{
+	const int BlurSize = 4;
+	int (*colas);
+	int (*rounded)[BlurSize];
+
+	if (cola == 255)
+	{
+		static int _colas[7] = {255, 160, 48, 24, 16, 5, 0};
+		static int _rounded[BlurSize][BlurSize] = 
+		{
+			{0, 0, 0, 0},
+			{0, _colas[2], _colas[2], _colas[3]},
+			{0, _colas[2], _colas[3], _colas[4]},
+			{0, _colas[3], _colas[4], _colas[5]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	else
+	{
+/*		int _colas[GlowSize] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _rounded[GlowSize][GlowSize] = 
+		{
+			{0, 0, 0, 0, 0, 0},
+			{0, colas[2], colas[2], colas[3], colas[4], colas[5]},
+			{0, colas[2], colas[3], colas[3], colas[5], colas[5]},
+			{0, colas[3], colas[3], colas[4], colas[5], colas[5]},
+			{0, colas[4], colas[5], colas[5], colas[5], colas[6]},
+			{0, colas[5], colas[5], colas[5], colas[6], colas[6]},
+		};*/
+		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _rounded[BlurSize][BlurSize] = 
+		{
+			{0, 0, 0, 0},
+			{0, _colas[2], _colas[2], _colas[3]},
+			{0, _colas[2], _colas[3], _colas[4]},
+			{0, _colas[3], _colas[4], _colas[5]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	render_aura<BlurSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
+}
+
+void Renderer::render_blob(int nx, int ny, int t, int colr, int colg, int colb, int cola)
+{
+	setpixel(nx, ny, PIXRGB(colr, colg, colb));
+
+	blendpixel(nx+1, ny, colr, colg, colb, 223);
+	blendpixel(nx-1, ny, colr, colg, colb, 223);
+	blendpixel(nx, ny+1, colr, colg, colb, 223);
+	blendpixel(nx, ny-1, colr, colg, colb, 223);
+
+	blendpixel(nx+1, ny-1, colr, colg, colb, 112);
+	blendpixel(nx-1, ny-1, colr, colg, colb, 112);
+	blendpixel(nx+1, ny+1, colr, colg, colb, 112);
+	blendpixel(nx-1, ny+1, colr, colg, colb, 112);
+}
+
 void Renderer::render_parts()
 {
 	int deca, decr, decg, decb, cola, colr, colg, colb, firea, firer, fireg, fireb, pixel_mode, q, i, t, nx, ny, x, y, caddress;
@@ -1128,22 +1316,7 @@ void Renderer::render_parts()
 	parts = sim->parts;
 	elements = sim->elements;
 #ifdef OGLR
-	int cfireV = 0, cfireC = 0, cfire = 0;
-	int csmokeV = 0, csmokeC = 0, csmoke = 0;
-	int cblobV = 0, cblobC = 0, cblob = 0;
-	int cblurV = 0, cblurC = 0, cblur = 0;
-	int cglowV = 0, cglowC = 0, cglow = 0;
-	int cflatV = 0, cflatC = 0, cflat = 0;
-	int caddV = 0, caddC = 0, cadd = 0;
-	int clineV = 0, clineC = 0, cline = 0;
-	GLint origBlendSrc, origBlendDst, prevFbo;
-
-	glGetIntegerv(GL_BLEND_SRC, &origBlendSrc);
-	glGetIntegerv(GL_BLEND_DST, &origBlendDst);
-	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
-	//Render to the particle FBO
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, partsFbo);
-	glTranslated(0, MENUSIZE, 0);
+	render_opengl_begin();
 #else
 	if (gridSize)//draws the grid
 	{
@@ -1273,7 +1446,10 @@ void Renderer::render_parts()
 				//Alter colour based on display mode
 				if(colour_mode & COLOUR_HEAT)
 				{
-					caddress = restrict_flt((int)( restrict_flt((float)(sim->parts[i].temp+(-MIN_TEMP)), 0.0f, MAX_TEMP+(-MIN_TEMP)) / ((MAX_TEMP+(-MIN_TEMP))/1024) ) *3, 0.0f, (1024.0f*3)-3);
+					const int temp_range = MAX_TEMP - MIN_TEMP;
+					float restricted_temp = restrict_flt(float(sim->parts[i].temp - MIN_TEMP), 0.0f, temp_range);
+					restricted_temp /= temp_range / 1024;
+					caddress = restrict_flt(int(restricted_temp) * 3, 0.0f, (1024.0f * 3) - 3);
 					firea = 255;
 					firer = colr = (unsigned char)color_data[caddress];
 					fireg = colg = (unsigned char)color_data[caddress+1];
@@ -1401,47 +1577,7 @@ void Renderer::render_parts()
 						}
 					}
 #ifdef OGLR
-					glColor4f(((float)colr)/255.0f, ((float)colg)/255.0f, ((float)colb)/255.0f, 1.0f);
-					glBegin(GL_LINE_STRIP);
-					if(t==PT_FIGH)
-					{
-						glVertex2f(fnx, fny+2);
-						glVertex2f(fnx+2, fny);
-						glVertex2f(fnx, fny-2);
-						glVertex2f(fnx-2, fny);
-						glVertex2f(fnx, fny+2);
-					}
-					else
-					{
-						glVertex2f(fnx-2, fny-2);
-						glVertex2f(fnx+2, fny-2);
-						glVertex2f(fnx+2, fny+2);
-						glVertex2f(fnx-2, fny+2);
-						glVertex2f(fnx-2, fny-2);
-					}
-					glEnd();
-					glBegin(GL_LINES);
-
-					if (colour_mode!=COLOUR_HEAT)
-					{
-						if (t==PT_STKM2)
-							glColor4f(100.0f/255.0f, 100.0f/255.0f, 1.0f, 1.0f);
-						else
-							glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-					}
-
-					glVertex2f(nx, ny+3);
-					glVertex2f(cplayer->legs[0], cplayer->legs[1]);
-
-					glVertex2f(cplayer->legs[0], cplayer->legs[1]);
-					glVertex2f(cplayer->legs[4], cplayer->legs[5]);
-
-					glVertex2f(nx, ny+3);
-					glVertex2f(cplayer->legs[8], cplayer->legs[9]);
-
-					glVertex2f(cplayer->legs[8], cplayer->legs[9]);
-					glVertex2f(cplayer->legs[12], cplayer->legs[13]);
-					glEnd();
+					render_opengl_stickman(cplayer, colour_mode, t, nx, ny, colr, colg, colb);
 #else
 					if (t==PT_STKM2)
 					{
@@ -1485,184 +1621,36 @@ void Renderer::render_parts()
 					draw_line(cplayer->legs[8], cplayer->legs[9], cplayer->legs[12], cplayer->legs[13], legr, legg, legb, 255);
 #endif
 				}
+#ifdef OGLR
+				render_opengl(pixel_mode, nx, ny, colr, colg, colb, cola);
+#else
 				if(pixel_mode & PMODE_FLAT)
 				{
-#ifdef OGLR
-					flatV[cflatV++] = nx;
-					flatV[cflatV++] = ny;
-					flatC[cflatC++] = ((float)colr)/255.0f;
-					flatC[cflatC++] = ((float)colg)/255.0f;
-					flatC[cflatC++] = ((float)colb)/255.0f;
-					flatC[cflatC++] = 1.0f;
-					cflat++;
-#else
-					vid[ny*(VIDXRES)+nx] = PIXRGB(colr,colg,colb);
-#endif
+					setpixel(nx, ny, PIXRGB(colr,colg,colb));
 				}
 				if(pixel_mode & PMODE_BLEND)
 				{
-#ifdef OGLR
-					flatV[cflatV++] = nx;
-					flatV[cflatV++] = ny;
-					flatC[cflatC++] = ((float)colr)/255.0f;
-					flatC[cflatC++] = ((float)colg)/255.0f;
-					flatC[cflatC++] = ((float)colb)/255.0f;
-					flatC[cflatC++] = ((float)cola)/255.0f;
-					cflat++;
-#else
 					blendpixel(nx, ny, colr, colg, colb, cola);
-#endif
 				}
 				if(pixel_mode & PMODE_ADD)
 				{
-#ifdef OGLR
-					addV[caddV++] = nx;
-					addV[caddV++] = ny;
-					addC[caddC++] = ((float)colr)/255.0f;
-					addC[caddC++] = ((float)colg)/255.0f;
-					addC[caddC++] = ((float)colb)/255.0f;
-					addC[caddC++] = ((float)cola)/255.0f;
-					cadd++;
-#else
 					addpixel(nx, ny, colr, colg, colb, cola);
-#endif
 				}
 				if(pixel_mode & PMODE_BLOB)
 				{
-#ifdef OGLR
-					blobV[cblobV++] = nx;
-					blobV[cblobV++] = ny;
-					blobC[cblobC++] = ((float)colr)/255.0f;
-					blobC[cblobC++] = ((float)colg)/255.0f;
-					blobC[cblobC++] = ((float)colb)/255.0f;
-					blobC[cblobC++] = 1.0f;
-					cblob++;
-#else
-					vid[ny*(VIDXRES)+nx] = PIXRGB(colr,colg,colb);
-
-					blendpixel(nx+1, ny, colr, colg, colb, 223);
-					blendpixel(nx-1, ny, colr, colg, colb, 223);
-					blendpixel(nx, ny+1, colr, colg, colb, 223);
-					blendpixel(nx, ny-1, colr, colg, colb, 223);
-
-					blendpixel(nx+1, ny-1, colr, colg, colb, 112);
-					blendpixel(nx-1, ny-1, colr, colg, colb, 112);
-					blendpixel(nx+1, ny+1, colr, colg, colb, 112);
-					blendpixel(nx-1, ny+1, colr, colg, colb, 112);
-#endif
+					render_blob(nx, ny, t, colr, colg, colb, cola);
 				}
 				if(pixel_mode & PMODE_GLOW)
 				{
-					int cola1 = (5*cola)/255;
-#ifdef OGLR
-					glowV[cglowV++] = nx;
-					glowV[cglowV++] = ny;
-					glowC[cglowC++] = ((float)colr)/255.0f;
-					glowC[cglowC++] = ((float)colg)/255.0f;
-					glowC[cglowC++] = ((float)colb)/255.0f;
-					glowC[cglowC++] = 1.0f;
-					cglow++;
-#else
-					addpixel(nx, ny, colr, colg, colb, (192*cola)/255);
-					addpixel(nx+1, ny, colr, colg, colb, (96*cola)/255);
-					addpixel(nx-1, ny, colr, colg, colb, (96*cola)/255);
-					addpixel(nx, ny+1, colr, colg, colb, (96*cola)/255);
-					addpixel(nx, ny-1, colr, colg, colb, (96*cola)/255);
-
-					for (x = 1; x < 6; x++) {
-						addpixel(nx, ny-x, colr, colg, colb, cola1);
-						addpixel(nx, ny+x, colr, colg, colb, cola1);
-						addpixel(nx-x, ny, colr, colg, colb, cola1);
-						addpixel(nx+x, ny, colr, colg, colb, cola1);
-						for (y = 1; y < 6; y++) {
-							if(x + y > 7)
-								continue;
-							addpixel(nx+x, ny-y, colr, colg, colb, cola1);
-							addpixel(nx-x, ny+y, colr, colg, colb, cola1);
-							addpixel(nx+x, ny+y, colr, colg, colb, cola1);
-							addpixel(nx-x, ny-y, colr, colg, colb, cola1);
-						}
-					}
-#endif
+					render_glow(nx, ny, t, colr, colg, colb, cola);
 				}
 				if(pixel_mode & PMODE_BLUR)
 				{
-#ifdef OGLR
-					blurV[cblurV++] = nx;
-					blurV[cblurV++] = ny;
-					blurC[cblurC++] = ((float)colr)/255.0f;
-					blurC[cblurC++] = ((float)colg)/255.0f;
-					blurC[cblurC++] = ((float)colb)/255.0f;
-					blurC[cblurC++] = 1.0f;
-					cblur++;
-#else
-					for (x=-3; x<4; x++)
-					{
-						for (y=-3; y<4; y++)
-						{
-							if (abs(x)+abs(y) <2 && !(abs(x)==2||abs(y)==2))
-								blendpixel(x+nx, y+ny, colr, colg, colb, 30);
-							if (abs(x)+abs(y) <=3 && abs(x)+abs(y))
-								blendpixel(x+nx, y+ny, colr, colg, colb, 20);
-							if (abs(x)+abs(y) == 2)
-								blendpixel(x+nx, y+ny, colr, colg, colb, 10);
-						}
-					}
-#endif
+					render_blur(nx, ny, t, colr, colg, colb, cola);
 				}
 				if(pixel_mode & PMODE_SPARK)
 				{
 					flicker = rand()%20;
-#ifdef OGLR
-					//Oh god, this is awful
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx-5;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/30;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx+5;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny-5;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/30;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny+5;
-					cline++;
-#else
 					gradv = 4*sim->parts[i].life + flicker;
 					for (x = 0; gradv>0.5; x++) {
 						addpixel(nx+x, ny, colr, colg, colb, gradv);
@@ -1672,61 +1660,10 @@ void Renderer::render_parts()
 						addpixel(nx, ny-x, colr, colg, colb, gradv);
 						gradv = gradv/1.5f;
 					}
-#endif
 				}
 				if(pixel_mode & PMODE_FLARE)
 				{
 					flicker = rand()%20;
-#ifdef OGLR
-					//Oh god, this is awful
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx-10;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/40;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx+10;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny-10;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/30;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny+10;
-					cline++;
-#else
 					gradv = flicker + fabs(parts[i].vx)*17 + fabs(sim->parts[i].vy)*17;
 					blendpixel(nx, ny, colr, colg, colb, (gradv*4)>255?255:(gradv*4) );
 					blendpixel(nx+1, ny, colr, colg, colb, (gradv*2)>255?255:(gradv*2) );
@@ -1745,61 +1682,10 @@ void Renderer::render_parts()
 						addpixel(nx, ny-x, colr, colg, colb, gradv);
 						gradv = gradv/1.2f;
 					}
-#endif
 				}
 				if(pixel_mode & PMODE_LFLARE)
 				{
 					flicker = rand()%20;
-#ifdef OGLR
-					//Oh god, this is awful
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx-70;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/30;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx+70;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny-70;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 1.0f - ((float)flicker)/50;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny;
-					cline++;
-
-					lineC[clineC++] = ((float)colr)/255.0f;
-					lineC[clineC++] = ((float)colg)/255.0f;
-					lineC[clineC++] = ((float)colb)/255.0f;
-					lineC[clineC++] = 0.0f;
-					lineV[clineV++] = fnx;
-					lineV[clineV++] = fny+70;
-					cline++;
-#else
 					gradv = flicker + fabs(parts[i].vx)*17 + fabs(parts[i].vy)*17;
 					blendpixel(nx, ny, colr, colg, colb, (gradv*4)>255?255:(gradv*4) );
 					blendpixel(nx+1, ny, colr, colg, colb, (gradv*2)>255?255:(gradv*2) );
@@ -1818,7 +1704,6 @@ void Renderer::render_parts()
 						addpixel(nx, ny-x, colr, colg, colb, gradv);
 						gradv = gradv/1.01f;
 					}
-#endif
 				}
 				if (pixel_mode & EFFECT_GRAVIN)
 				{
@@ -1878,32 +1763,13 @@ void Renderer::render_parts()
 				//Fire effects
 				if(firea && (pixel_mode & FIRE_BLEND))
 				{
-#ifdef OGLR
-					smokeV[csmokeV++] = nx;
-					smokeV[csmokeV++] = ny;
-					smokeC[csmokeC++] = ((float)firer)/255.0f;
-					smokeC[csmokeC++] = ((float)fireg)/255.0f;
-					smokeC[csmokeC++] = ((float)fireb)/255.0f;
-					smokeC[csmokeC++] = ((float)firea)/255.0f;
-					csmoke++;
-#else
 					firea /= 2;
 					fire_r[ny/CELL][nx/CELL] = (firea*firer + (255-firea)*fire_r[ny/CELL][nx/CELL]) >> 8;
 					fire_g[ny/CELL][nx/CELL] = (firea*fireg + (255-firea)*fire_g[ny/CELL][nx/CELL]) >> 8;
 					fire_b[ny/CELL][nx/CELL] = (firea*fireb + (255-firea)*fire_b[ny/CELL][nx/CELL]) >> 8;
-#endif
 				}
 				if(firea && (pixel_mode & FIRE_ADD))
 				{
-#ifdef OGLR
-					fireV[cfireV++] = nx;
-					fireV[cfireV++] = ny;
-					fireC[cfireC++] = ((float)firer)/255.0f;
-					fireC[cfireC++] = ((float)fireg)/255.0f;
-					fireC[cfireC++] = ((float)fireb)/255.0f;
-					fireC[cfireC++] = ((float)firea)/255.0f;
-					cfire++;
-#else
 					firea /= 8;
 					firer = ((firea*firer) >> 8) + fire_r[ny/CELL][nx/CELL];
 					fireg = ((firea*fireg) >> 8) + fire_g[ny/CELL][nx/CELL];
@@ -1919,192 +1785,525 @@ void Renderer::render_parts()
 					fire_r[ny/CELL][nx/CELL] = firer;
 					fire_g[ny/CELL][nx/CELL] = fireg;
 					fire_b[ny/CELL][nx/CELL] = fireb;
-#endif
 				}
+#endif
 			}
 		}
 	}
+}
+
 #ifdef OGLR
 
-		//Go into array mode
-		glEnableClientState(GL_COLOR_ARRAY);
-		glEnableClientState(GL_VERTEX_ARRAY);
+void Renderer::render_opengl_begin()
+{
+	glGetIntegerv(GL_BLEND_SRC, &origBlendSrc);
+	glGetIntegerv(GL_BLEND_DST, &origBlendDst);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+	//Render to the particle FBO
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, partsFbo);
+	glTranslated(0, MENUSIZE, 0);
+}
+
+void Renderer::render_opengl(int pixel_mode, int nx, int ny, int colr, int colg, int colb, int cola)
+{
+	float fnx = (float) nx;
+	float fny = (float) ny;
+
+	int cfireV = 0, cfireC = 0, cfire = 0;
+	int csmokeV = 0, csmokeC = 0, csmoke = 0;
+	int cblobV = 0, cblobC = 0, cblob = 0;
+	int cblurV = 0, cblurC = 0, cblur = 0;
+	int cglowV = 0, cglowC = 0, cglow = 0;
+	int cflatV = 0, cflatC = 0, cflat = 0;
+	int caddV = 0, caddC = 0, cadd = 0;
+	int clineV = 0, clineC = 0, cline = 0;
+
+	if(pixel_mode & PMODE_FLAT)
+	{
+		flatV[cflatV++] = nx;
+		flatV[cflatV++] = ny;
+		flatC[cflatC++] = ((float)colr)/255.0f;
+		flatC[cflatC++] = ((float)colg)/255.0f;
+		flatC[cflatC++] = ((float)colb)/255.0f;
+		flatC[cflatC++] = 1.0f;
+		cflat++;
+	}
+	if(pixel_mode & PMODE_BLEND)
+	{
+		flatV[cflatV++] = nx;
+		flatV[cflatV++] = ny;
+		flatC[cflatC++] = ((float)colr)/255.0f;
+		flatC[cflatC++] = ((float)colg)/255.0f;
+		flatC[cflatC++] = ((float)colb)/255.0f;
+		flatC[cflatC++] = ((float)cola)/255.0f;
+		cflat++;
+	}
+	if(pixel_mode & PMODE_ADD)
+	{
+		addV[caddV++] = nx;
+		addV[caddV++] = ny;
+		addC[caddC++] = ((float)colr)/255.0f;
+		addC[caddC++] = ((float)colg)/255.0f;
+		addC[caddC++] = ((float)colb)/255.0f;
+		addC[caddC++] = ((float)cola)/255.0f;
+		cadd++;
+	}
+	if(pixel_mode & PMODE_BLOB)
+	{
+		blobV[cblobV++] = nx;
+		blobV[cblobV++] = ny;
+		blobC[cblobC++] = ((float)colr)/255.0f;
+		blobC[cblobC++] = ((float)colg)/255.0f;
+		blobC[cblobC++] = ((float)colb)/255.0f;
+		blobC[cblobC++] = 1.0f;
+		cblob++;
+	}
+	if(pixel_mode & PMODE_GLOW)
+	{
+		int cola1 = (5*cola)/255;
+		glowV[cglowV++] = nx;
+		glowV[cglowV++] = ny;
+		glowC[cglowC++] = ((float)colr)/255.0f;
+		glowC[cglowC++] = ((float)colg)/255.0f;
+		glowC[cglowC++] = ((float)colb)/255.0f;
+		glowC[cglowC++] = 1.0f;
+		cglow++;
+	}
+	if(pixel_mode & PMODE_BLUR)
+	{
+		blurV[cblurV++] = nx;
+		blurV[cblurV++] = ny;
+		blurC[cblurC++] = ((float)colr)/255.0f;
+		blurC[cblurC++] = ((float)colg)/255.0f;
+		blurC[cblurC++] = ((float)colb)/255.0f;
+		blurC[cblurC++] = 1.0f;
+		cblur++;
+	}
+	if(pixel_mode & PMODE_SPARK)
+	{
+		flicker = rand()%20;
+		//Oh god, this is awful
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx-5;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/30;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx+5;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny-5;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/30;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny+5;
+		cline++;
+	}
+
+	if(pixel_mode & PMODE_FLARE)
+	{
+		flicker = rand()%20;
+		//Oh god, this is awful
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx-10;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/40;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx+10;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny-10;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/30;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny+10;
+		cline++;
+	}
+
+	if(pixel_mode & PMODE_LFLARE)
+	{
+		flicker = rand()%20;
+		//Oh god, this is awful
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx-70;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/30;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx+70;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny-70;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 1.0f - ((float)flicker)/50;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny;
+		cline++;
+
+		lineC[clineC++] = ((float)colr)/255.0f;
+		lineC[clineC++] = ((float)colg)/255.0f;
+		lineC[clineC++] = ((float)colb)/255.0f;
+		lineC[clineC++] = 0.0f;
+		lineV[clineV++] = fnx;
+		lineV[clineV++] = fny+70;
+		cline++;
+	}
+
+	//Fire effects
+	if(firea && (pixel_mode & FIRE_BLEND))
+	{
+		smokeV[csmokeV++] = nx;
+		smokeV[csmokeV++] = ny;
+		smokeC[csmokeC++] = ((float)firer)/255.0f;
+		smokeC[csmokeC++] = ((float)fireg)/255.0f;
+		smokeC[csmokeC++] = ((float)fireb)/255.0f;
+		smokeC[csmokeC++] = ((float)firea)/255.0f;
+		csmoke++;
+	}
+
+	if(firea && (pixel_mode & FIRE_ADD))
+	{
+		fireV[cfireV++] = nx;
+		fireV[cfireV++] = ny;
+		fireC[cfireC++] = ((float)firer)/255.0f;
+		fireC[cfireC++] = ((float)fireg)/255.0f;
+		fireC[cfireC++] = ((float)fireb)/255.0f;
+		fireC[cfireC++] = ((float)firea)/255.0f;
+		cfire++;
+	}
+
+	// Begin unsupported
+	if (pixel_mode & EFFECT_GRAVIN)
+	{
+	}
+	if (pixel_mode & EFFECT_GRAVOUT)
+	{
+	}
+	if (pixel_mode & EFFECT_DBGLINES)
+	{
+	}
+	// End unsupported
+}
+
+void Renderer::render_opengl_stickman(playerst* cplayer, int colour_mode, int nx, int ny, int t, int colr, int colg, int colb)
+{
+	float fnx = (float) nx;
+	float fny = (float) ny;
+
+	glColor4f(((float)colr)/255.0f, ((float)colg)/255.0f, ((float)colb)/255.0f, 1.0f);
+	glBegin(GL_LINE_STRIP);
+	if(t==PT_FIGH)
+	{
+		glVertex2f(fnx, fny+2);
+		glVertex2f(fnx+2, fny);
+		glVertex2f(fnx, fny-2);
+		glVertex2f(fnx-2, fny);
+		glVertex2f(fnx, fny+2);
+	}
+	else
+	{
+		glVertex2f(fnx-2, fny-2);
+		glVertex2f(fnx+2, fny-2);
+		glVertex2f(fnx+2, fny+2);
+		glVertex2f(fnx-2, fny+2);
+		glVertex2f(fnx-2, fny-2);
+	}
+	glEnd();
+	glBegin(GL_LINES);
+
+	if (colour_mode!=COLOUR_HEAT)
+	{
+		if (t==PT_STKM2)
+			glColor4f(100.0f/255.0f, 100.0f/255.0f, 1.0f, 1.0f);
+		else
+			glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	glVertex2f(nx, ny+3);
+	glVertex2f(cplayer->legs[0], cplayer->legs[1]);
+
+	glVertex2f(cplayer->legs[0], cplayer->legs[1]);
+	glVertex2f(cplayer->legs[4], cplayer->legs[5]);
+
+	glVertex2f(nx, ny+3);
+	glVertex2f(cplayer->legs[8], cplayer->legs[9]);
+
+	glVertex2f(cplayer->legs[8], cplayer->legs[9]);
+	glVertex2f(cplayer->legs[12], cplayer->legs[13]);
+	glEnd();
+}
+
+void Renderer::render_opengl_end()
+{
+	//Go into array mode
+	glEnableClientState(GL_COLOR_ARRAY);
+	glEnableClientState(GL_VERTEX_ARRAY);
+
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	if(cflat)
+	{
+		// -- BEGIN FLAT -- //
+		//Set point size (size of fire texture)
+		glPointSize(1.0f);
+
+		glColorPointer(4, GL_FLOAT, 0, &flatC[0]);
+		glVertexPointer(2, GL_INT, 0, &flatV[0]);
+
+		glDrawArrays(GL_POINTS, 0, cflat);
+
+		//Clear some stuff we set
+		// -- END FLAT -- //
+	}
+
+	if(cblob)
+	{
+		// -- BEGIN BLOB -- //
+		glEnable( GL_POINT_SMOOTH ); //Blobs!
+		glPointSize(2.5f);
+
+		glColorPointer(4, GL_FLOAT, 0, &blobC[0]);
+		glVertexPointer(2, GL_INT, 0, &blobV[0]);
+
+		glDrawArrays(GL_POINTS, 0, cblob);
+
+		//Clear some stuff we set
+		glDisable( GL_POINT_SMOOTH );
+		// -- END BLOB -- //
+	}
+
+	if(cglow || cblur)
+	{
+		// -- BEGIN GLOW -- //
+		//Start and prepare fire program
+		glEnable(GL_TEXTURE_2D);
+		glUseProgram(fireProg);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, glowAlpha);
+		glUniform1i(glGetUniformLocation(fireProg, "fireAlpha"), 0);
+
+		glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_LOWER_LEFT);
+
+		//Make sure we can use texture coords on points
+		glEnable(GL_POINT_SPRITE);
+		glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
+
+		//Set point size (size of fire texture)
+		glPointSize(11.0f);
+
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+		if(cglow)
+		{
+			glColorPointer(4, GL_FLOAT, 0, &glowC[0]);
+			glVertexPointer(2, GL_INT, 0, &glowV[0]);
+
+			glDrawArrays(GL_POINTS, 0, cglow);
+		}
+
+		glPointSize(7.0f);
 
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		if(cflat)
+		if(cblur)
 		{
-			// -- BEGIN FLAT -- //
-			//Set point size (size of fire texture)
-			glPointSize(1.0f);
+			glBindTexture(GL_TEXTURE_2D, blurAlpha);
 
-			glColorPointer(4, GL_FLOAT, 0, &flatC[0]);
-			glVertexPointer(2, GL_INT, 0, &flatV[0]);
+			glColorPointer(4, GL_FLOAT, 0, &blurC[0]);
+			glVertexPointer(2, GL_INT, 0, &blurV[0]);
 
-			glDrawArrays(GL_POINTS, 0, cflat);
-
-			//Clear some stuff we set
-			// -- END FLAT -- //
+			glDrawArrays(GL_POINTS, 0, cblur);
 		}
 
-		if(cblob)
+		//Clear some stuff we set
+		glDisable(GL_POINT_SPRITE);
+		glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		glUseProgram(0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
+		// -- END GLOW -- //
+	}
+
+	if(cadd)
+	{
+		// -- BEGIN ADD -- //
+		//Set point size (size of fire texture)
+		glPointSize(1.0f);
+
+		glColorPointer(4, GL_FLOAT, 0, &addC[0]);
+		glVertexPointer(2, GL_INT, 0, &addV[0]);
+
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		glDrawArrays(GL_POINTS, 0, cadd);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		//Clear some stuff we set
+		// -- END ADD -- //
+	}
+
+	if(cline)
+	{
+		// -- BEGIN LINES -- //
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		glEnable( GL_LINE_SMOOTH );
+		glColorPointer(4, GL_FLOAT, 0, &lineC[0]);
+		glVertexPointer(2, GL_FLOAT, 0, &lineV[0]);
+
+		glDrawArrays(GL_LINE_STRIP, 0, cline);
+
+		//Clear some stuff we set
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_LINE_SMOOTH);
+		// -- END LINES -- //
+	}
+
+	if(cfire || csmoke)
+	{
+		// -- BEGIN FIRE -- //
+		//Start and prepare fire program
+		glEnable(GL_TEXTURE_2D);
+		glUseProgram(fireProg);
+		//glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, fireAlpha);
+		glUniform1i(glGetUniformLocation(fireProg, "fireAlpha"), 0);
+
+		//Make sure we can use texture coords on points
+		glEnable(GL_POINT_SPRITE);
+		glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
+
+		//Set point size (size of fire texture)
+		glPointSize(CELL*3);
+
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+		if(cfire)
 		{
-			// -- BEGIN BLOB -- //
-			glEnable( GL_POINT_SMOOTH ); //Blobs!
-			glPointSize(2.5f);
+			glColorPointer(4, GL_FLOAT, 0, &fireC[0]);
+			glVertexPointer(2, GL_INT, 0, &fireV[0]);
 
-			glColorPointer(4, GL_FLOAT, 0, &blobC[0]);
-			glVertexPointer(2, GL_INT, 0, &blobV[0]);
-
-			glDrawArrays(GL_POINTS, 0, cblob);
-
-			//Clear some stuff we set
-			glDisable( GL_POINT_SMOOTH );
-			// -- END BLOB -- //
+			glDrawArrays(GL_POINTS, 0, cfire);
 		}
 
-		if(cglow || cblur)
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		if(csmoke)
 		{
-			// -- BEGIN GLOW -- //
-			//Start and prepare fire program
-			glEnable(GL_TEXTURE_2D);
-			glUseProgram(fireProg);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, glowAlpha);
-			glUniform1i(glGetUniformLocation(fireProg, "fireAlpha"), 0);
+			glColorPointer(4, GL_FLOAT, 0, &smokeC[0]);
+			glVertexPointer(2, GL_INT, 0, &smokeV[0]);
 
-			glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_LOWER_LEFT);
-
-			//Make sure we can use texture coords on points
-			glEnable(GL_POINT_SPRITE);
-			glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
-
-			//Set point size (size of fire texture)
-			glPointSize(11.0f);
-
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-			if(cglow)
-			{
-				glColorPointer(4, GL_FLOAT, 0, &glowC[0]);
-				glVertexPointer(2, GL_INT, 0, &glowV[0]);
-
-				glDrawArrays(GL_POINTS, 0, cglow);
-			}
-
-			glPointSize(7.0f);
-
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-			if(cblur)
-			{
-				glBindTexture(GL_TEXTURE_2D, blurAlpha);
-
-				glColorPointer(4, GL_FLOAT, 0, &blurC[0]);
-				glVertexPointer(2, GL_INT, 0, &blurV[0]);
-
-				glDrawArrays(GL_POINTS, 0, cblur);
-			}
-
-			//Clear some stuff we set
-			glDisable(GL_POINT_SPRITE);
-			glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			glUseProgram(0);
-			glBindTexture(GL_TEXTURE_2D, 0);
-			glDisable(GL_TEXTURE_2D);
-			// -- END GLOW -- //
+			glDrawArrays(GL_POINTS, 0, csmoke);
 		}
 
-		if(cadd)
-		{
-			// -- BEGIN ADD -- //
-			//Set point size (size of fire texture)
-			glPointSize(1.0f);
+		//Clear some stuff we set
+		glDisable(GL_POINT_SPRITE);
+		glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
+		glUseProgram(0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
+		// -- END FIRE -- //
+	}
 
-			glColorPointer(4, GL_FLOAT, 0, &addC[0]);
-			glVertexPointer(2, GL_INT, 0, &addV[0]);
+	glDisableClientState(GL_COLOR_ARRAY);
+	glDisableClientState(GL_VERTEX_ARRAY);
 
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			glDrawArrays(GL_POINTS, 0, cadd);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			//Clear some stuff we set
-			// -- END ADD -- //
-		}
+	//Reset FBO
+	glTranslated(0, -MENUSIZE, 0);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevFbo);
 
-		if(cline)
-		{
-			// -- BEGIN LINES -- //
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			glEnable( GL_LINE_SMOOTH );
-			glColorPointer(4, GL_FLOAT, 0, &lineC[0]);
-			glVertexPointer(2, GL_FLOAT, 0, &lineV[0]);
-
-			glDrawArrays(GL_LINE_STRIP, 0, cline);
-
-			//Clear some stuff we set
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glDisable(GL_LINE_SMOOTH);
-			// -- END LINES -- //
-		}
-
-		if(cfire || csmoke)
-		{
-			// -- BEGIN FIRE -- //
-			//Start and prepare fire program
-			glEnable(GL_TEXTURE_2D);
-			glUseProgram(fireProg);
-			//glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, fireAlpha);
-			glUniform1i(glGetUniformLocation(fireProg, "fireAlpha"), 0);
-
-			//Make sure we can use texture coords on points
-			glEnable(GL_POINT_SPRITE);
-			glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
-
-			//Set point size (size of fire texture)
-			glPointSize(CELL*3);
-
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-			if(cfire)
-			{
-				glColorPointer(4, GL_FLOAT, 0, &fireC[0]);
-				glVertexPointer(2, GL_INT, 0, &fireV[0]);
-
-				glDrawArrays(GL_POINTS, 0, cfire);
-			}
-
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-			if(csmoke)
-			{
-				glColorPointer(4, GL_FLOAT, 0, &smokeC[0]);
-				glVertexPointer(2, GL_INT, 0, &smokeV[0]);
-
-				glDrawArrays(GL_POINTS, 0, csmoke);
-			}
-
-			//Clear some stuff we set
-			glDisable(GL_POINT_SPRITE);
-			glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
-			glUseProgram(0);
-			glBindTexture(GL_TEXTURE_2D, 0);
-			glDisable(GL_TEXTURE_2D);
-			// -- END FIRE -- //
-		}
-
-		glDisableClientState(GL_COLOR_ARRAY);
-		glDisableClientState(GL_VERTEX_ARRAY);
-
-		//Reset FBO
-		glTranslated(0, -MENUSIZE, 0);
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevFbo);
-
-		glBlendFunc(origBlendSrc, origBlendDst);
-#endif
+	glBlendFunc(origBlendSrc, origBlendDst);
 }
+
+#endif
 
 void Renderer::draw_other() // EMP effect
 {
