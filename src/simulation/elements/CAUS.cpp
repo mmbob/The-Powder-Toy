@@ -61,7 +61,7 @@ int Element_CAUS::update(UPDATE_FUNC_ARGS)
 				{
 					if (((r&0xFF)!=PT_CLNE && (r&0xFF)!=PT_PCLN && sim->elements[r&0xFF].Hardness>(rand()%1000))&&parts[i].life>=50)
 					{
-						if (sim->parts_avg(i, r>>8,PT_GLAS)!= PT_GLAS)//GLAS protects stuff from acid
+						if (sim->fast_parts_avg(x, y, rx, ry, PT_GLAS)!= PT_GLAS)//GLAS protects stuff from acid
 						{
 							float newtemp = ((60.0f-(float)sim->elements[r&0xFF].Hardness))*7.0f;
 							if(newtemp < 0){
