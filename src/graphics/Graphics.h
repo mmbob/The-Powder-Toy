@@ -216,9 +216,12 @@ public:
 
 	void Acquire();
 	void Release();
-
-	void blendpixel(int x, int y, int r, int g, int b, int a);
-	void addpixel(int x, int y, int r, int g, int b, int a);
+	
+	int getpixeloffset(int x, int y);
+	pixel getpixel(int x, int y);
+	void __fastcall setpixel(int x, int y, pixel p);
+	void __fastcall blendpixel(int x, int y, int r, int g, int b, int a);
+	void __fastcall addpixel(int x, int y, int r, int g, int b, int a);
 
 	void draw_icon(int x, int y, Icon icon, unsigned char alpha = 255, bool invert = false);
 
