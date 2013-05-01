@@ -996,7 +996,49 @@ void Renderer::render_fire()
 	if(!(render_mode & FIREMODE))
 		return;
 
-	for (int j = 0; j < YRES / CELL; j++)
+		// This is so unsafe.
+	concurrency::parallel_for(0, (XRES / CELL) * (YRES / CELL), [&](int index)
+	{
+		int i = index % (XRES / CELL);
+		int j = index / (XRES / CELL);
+
+		int r = fire_r[j][i];
+		int g = fire_g[j][i];
+		int b = fire_b[j][i];
+		if (r || g || b)
+		{
+			int iCell = i * CELL;
+			int jCell = j * CELL;
+			for (int dy = -CELL; dy < 2 * CELL; dy++)
+				for (int dx = -CELL; dx < 2 * CELL; dx++)
+					addpixel(iCell + dx , jCell + dy, r, g, b, fire_alpha[dy + CELL][dx + CELL]);
+		}
+		r *= 8;
+		g *= 8;
+		b *= 8;
+		for (int dy = -1; dy < 2; dy++)
+		{
+			if (j + dy < 0 || j + dy >= YRES / CELL)
+				continue;
+
+			for (int dx = -1; dx < 2; dx++)
+			{
+				if ((dx || dy) && i + dx >= 0 && i + dx < XRES / CELL)
+				{
+					r += fire_r[j + dy][i + dx];
+					g += fire_g[j + dy][i + dx];
+					b += fire_b[j + dy][i + dx];
+				}
+			}
+		}
+		r /= 16;
+		g /= 16;
+		b /= 16;
+		fire_r[j][i] = r > 4 ? r - 4 : 0;
+		fire_g[j][i] = g > 4 ? g - 4 : 0;
+		fire_b[j][i] = b > 4 ? b - 4 : 0;
+	}, concurrency::static_partitioner());
+/*	for (int j = 0; j < YRES / CELL; j++)
 		for (int i = 0; i < XRES / CELL; i++)
 		{
 			int r = fire_r[j][i];
@@ -1034,7 +1076,7 @@ void Renderer::render_fire()
 			fire_r[j][i] = r > 4 ? r - 4 : 0;
 			fire_g[j][i] = g > 4 ? g - 4 : 0;
 			fire_b[j][i] = b > 4 ? b - 4 : 0;
-		}
+		}*/
 #endif
 }
 
