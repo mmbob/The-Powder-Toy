@@ -1165,9 +1165,6 @@ void Renderer::prepare_alpha(int size, float intensity)
 #endif
 }
 
-#include <ppl.h>
-#include <ppltasks.h>
-
 template <int AuraSize, Renderer::AuraPixelFunction PixelFunction>
 void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize])
 {
