@@ -27,6 +27,10 @@
 #include "cat/LuaScriptInterface.h"
 #include "cat/LuaScriptHelper.h"
 
+#include <SDL_thread.h>
+
+SDL_mutex* updateMutex = nullptr;
+
 int Simulation::Load(GameSave * save)
 {
 	return Load(0, 0, save);
@@ -2618,8 +2622,12 @@ void Simulation::detach(int i)
 	parts[i].ctype = 0;
 }
 
+#include <SDL_thread.h>
+
+
 void Simulation::kill_part(int i)//kills particle number i
 {
+	SDL_LockMutex(updateMutex);
 	int x = (int)(parts[i].x+0.5f);
 	int y = (int)(parts[i].y+0.5f);
 	if (x>=0 && y>=0 && x<XRES && y<YRES) {
@@ -2632,8 +2640,6 @@ void Simulation::kill_part(int i)//kills particle number i
 	if (parts[i].type == PT_NONE)
 		return;
 
-	if(parts[i].type > 0 && parts[i].type < PT_NUM && elementCount[parts[i].type])
-		elementCount[parts[i].type]--;
 	if (parts[i].type == PT_STKM)
 	{
 		player.spwn = 0;
@@ -2652,9 +2658,14 @@ void Simulation::kill_part(int i)//kills particle number i
 		detach(i);
 	}
 
-	parts[i].type = PT_NONE;
+	if(parts[i].type > 0 && parts[i].type < PT_NUM && elementCount[parts[i].type])
+		elementCount[parts[i].type]--;
+
 	parts[i].life = pfree;
 	pfree = i;
+
+	parts[i].type = PT_NONE;
+	SDL_UnlockMutex(updateMutex);
 }
 
 void Simulation::part_change_type(int i, int x, int y, int t)//changes the type of particle number i, to t.  This also changes pmap at the same time.
@@ -3330,6 +3341,8 @@ void Simulation::delete_part(int x, int y, int flags)//calls kill_part with the 
 	kill_part(i>>8);
 }
 
+#include <ppl.h>
+
 void Simulation::update_particles_i(int start, int inc)
 {
 	int i, j, x, y, t, nx, ny, r, surround_space, s, lt, rt, nt, nnx, nny, q, golnum, goldelete, z, neighbors, createdsomething;
@@ -3347,6 +3360,9 @@ void Simulation::update_particles_i(int start, int inc)
 	unsigned int elem_properties;
 	float pGravX, pGravY, pGravD;
 	int excessive_stacking_found = 0;
+
+	if (updateMutex == nullptr)
+		updateMutex = SDL_CreateMutex();
 
 	currentTick++;
 
@@ -3628,18 +3644,23 @@ void Simulation::update_particles_i(int start, int inc)
 		std::fill(elementCount, elementCount+PT_NUM, 0);
 	}
 
-	for (i=0; i<=parts_lastActiveIndex; i++)
+	concurrency::parallel_for(0, parts_lastActiveIndex, [&](int i) {
 		if (parts[i].type)
 		{
 			t = parts[i].type;
+			x = (int) (parts[i].x + 0.5f);
+			y = (int) (parts[i].y + 0.5f);
 			if (t<0 || t>=PT_NUM || !elements[t].Enabled)
 			{
 				kill_part(i);
-				continue;
+				return;
 			}
 
+
 			if(elementRecount)
+			{
 				elementCount[t]++;
+			}
 
 			elem_properties = elements[t].Properties;
 			if (parts[i].life>0 && (elem_properties&PROP_LIFE_DEC))
@@ -3650,27 +3671,16 @@ void Simulation::update_particles_i(int start, int inc)
 				{
 					// kill on change to no life
 					kill_part(i);
-					continue;
+					return;
 				}
 			}
 			else if (parts[i].life<=0 && (elem_properties&PROP_LIFE_KILL))
 			{
 				// kill if no life
 				kill_part(i);
-				continue;
+				return;
 			}
-		}
-			//the main particle loop function, goes over all particles.
 
-		for (i=0; i<=parts_lastActiveIndex; i++)
-			if (parts[i].type)
-			{
-				t = parts[i].type;
-
-			x = (int)(parts[i].x+0.5f);
-			y = (int)(parts[i].y+0.5f);
-
-			//this kills any particle out of the screen, or in a wall where it isn't supposed to go
 			if (x<CELL || y<CELL || x>=XRES-CELL || y>=YRES-CELL ||
 			        (bmap[y/CELL][x/CELL] &&
 			         (bmap[y/CELL][x/CELL]==WL_WALL ||
@@ -3685,8 +3695,24 @@ void Simulation::update_particles_i(int start, int inc)
 			          (bmap[y/CELL][x/CELL]==WL_EWALL && !emap[y/CELL][x/CELL])) && (t!=PT_STKM) && (t!=PT_STKM2) && (t!=PT_FIGH)))
 			{
 				kill_part(i);
-				continue;
+				return;
 			}
+		}
+	});
+			//the main particle loop function, goes over all particles.
+
+		for (i=0; i<=parts_lastActiveIndex; i++)
+			if (parts[i].type)
+			{
+				t = parts[i].type;
+
+			x = (int)(parts[i].x+0.5f);
+			y = (int)(parts[i].y+0.5f);
+
+			Element* element = &elements[t];
+			Particle* part = &parts[i];
+
+			//this kills any particle out of the screen, or in a wall where it isn't supposed to go
 			if (bmap[y/CELL][x/CELL]==WL_DETECT && emap[y/CELL][x/CELL]<8)
 				set_emap(x/CELL, y/CELL);
 
@@ -3768,18 +3794,6 @@ void Simulation::update_particles_i(int start, int inc)
 			parts[i].vy += elements[t].Advection*vy[y/CELL][x/CELL] + pGravY;
 
 
-			if (elements[t].Diffusion)//the random diffusion that gasses have
-			{
-#ifdef REALISTIC
-				//The magic number controlls diffusion speed
-				parts[i].vx += 0.05*sqrtf(parts[i].temp)*elements[t].Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
-				parts[i].vy += 0.05*sqrtf(parts[i].temp)*elements[t].Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
-#else
-				parts[i].vx += elements[t].Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
-				parts[i].vy += elements[t].Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
-#endif
-			}
-
 			j = surround_space = nt = 0;//if nt is greater than 1 after this, then there is a particle around the current particle, that is NOT the current particle's type, for water movement.
 			for (nx=-1; nx<2; nx++)
 				for (ny=-1; ny<2; ny++) {
@@ -3799,14 +3813,13 @@ void Simulation::update_particles_i(int start, int inc)
 
 			if (!legacy_enable)
 			{
-				 if (y-2 >= 0 && y-2 < YRES && (elements[t].Properties&TYPE_LIQUID) && (t!=PT_GEL || gel_scale>(1+rand()%255))) {//some heat convection for liquids
+				 if (y >= 2 && y < YRES + 2 && (elements[t].Properties&TYPE_LIQUID) && (t!=PT_GEL || gel_scale>(1+rand()%255))) //some heat convection for liquids
+				 {
 					r = pmap[y-2][x];
-					if (!(!r || parts[i].type != (r&0xFF))) {
-						if (parts[i].temp>parts[r>>8].temp) {
-							swappage = parts[i].temp;
-							parts[i].temp = parts[r>>8].temp;
-							parts[r>>8].temp = swappage;
-						}
+					int otherType = r & 0xFF;
+					int otherIndex = r >> 8;
+					if (r != 0 && parts[i].type == otherType && parts[i].temp > parts[otherIndex].temp)
+						std::swap(parts[i].temp, parts[otherIndex].temp);
 					}
 				}
 
@@ -3892,20 +3905,28 @@ void Simulation::update_particles_i(int start, int inc)
 
 					ctemph = ctempl = pt;
 					// change boiling point with pressure
-					if ((elements[t].State==ST_LIQUID && elements[t].HighTemperatureTransition>-1 && elements[t].HighTemperatureTransition<PT_NUM && elements[elements[t].HighTemperatureTransition].State==ST_GAS)
-					        || t==PT_LNTG || t==PT_SLTW)
+					if ((element->State == ST_LIQUID &&
+						element->HighTemperatureTransition > -1 &&element->HighTemperatureTransition < PT_NUM &&
+						elements[element->HighTemperatureTransition].State == ST_GAS) ||
+						t == PT_LNTG || t == PT_SLTW)
+					{
 						ctemph -= 2.0f*pv[y/CELL][x/CELL];
-					else if ((elements[t].State==ST_GAS && elements[t].LowTemperatureTransition>-1 && elements[t].LowTemperatureTransition<PT_NUM && elements[elements[t].LowTemperatureTransition].State==ST_LIQUID)
-					         || t==PT_WTRV)
+					}
+					else if ((element->State == ST_GAS &&
+						element->LowTemperatureTransition > -1 && elements->LowTemperatureTransition < PT_NUM &&
+						elements[elements->LowTemperatureTransition].State == ST_LIQUID) ||
+						t == PT_WTRV)
+					{
 						ctempl -= 2.0f*pv[y/CELL][x/CELL];
-					s = 1;
+					}
+					bool typeChanged = true;
 
 					//A fix for ice with ctype = 0
 					if ((t==PT_ICEI || t==PT_SNOW) && (parts[i].ctype==0 || parts[i].ctype>=PT_NUM || parts[i].ctype==PT_ICEI || parts[i].ctype==PT_SNOW))
 						parts[i].ctype = PT_WATR;
 
-					if (ctemph>elements[t].HighTemperature&&elements[t].HighTemperatureTransition>-1) {
 						// particle type change due to high temperature
+					if (ctemph > element->HighTemperature && element->HighTemperatureTransition > -1) {
 #ifdef REALISTIC
 						float dbt = ctempl - pt;
 						if (elements[t].HighTemperatureTransition!=PT_NUM)
@@ -3918,39 +3939,39 @@ void Simulation::update_particles_i(int start, int inc)
 							else
 							{
 								parts[i].temp = restrict_flt(elements[t].HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
-								s = 0;
+								typeChanged = false;
 							}
 						}
-						 	 #else
-						if (elements[t].HighTemperatureTransition!=PT_NUM)
+#else
+						if (elements[t].HighTemperatureTransition != PT_NUM)
 							t = elements[t].HighTemperatureTransition;
 #endif
 						else if (t==PT_ICEI || t==PT_SNOW) {
 							if (parts[i].ctype<PT_NUM&&parts[i].ctype!=t) {
-								if (elements[parts[i].ctype].LowTemperatureTransition==t&&pt<=elements[parts[i].ctype].LowTemperature) s = 0;
+								if (elements[parts[i].ctype].LowTemperatureTransition==t&&pt<=elements[parts[i].ctype].LowTemperature) typeChanged = false;
 								else {
 #ifdef REALISTIC
-									//One ice table value for all it's kinds
+									//One ice table value for all it'typeChanged kinds
 									if (platent[t] <= (c_heat - (elements[parts[i].ctype].LowTemperature - dbt)*c_Cm))
 									{
 										pt = (c_heat - platent[t])/c_Cm;
-									 	 t = parts[i].ctype;
-									 	 parts[i].ctype = PT_NONE;
-									 	 parts[i].life = 0;
+										t = parts[i].ctype;
+										parts[i].ctype = PT_NONE;
+										parts[i].life = 0;
 									}
 									else
 									{
 										parts[i].temp = restrict_flt(elements[parts[i].ctype].LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
-									 	 s = 0;
+										typeChanged = false;
 									}
-									#else
+#else
 									t = parts[i].ctype;
 									parts[i].ctype = PT_NONE;
 									parts[i].life = 0;
 #endif
 								}
 							}
-							else s = 0;
+							else typeChanged = false;
 						}
 						else if (t==PT_SLTW) {
 #ifdef REALISTIC
@@ -3964,14 +3985,14 @@ void Simulation::update_particles_i(int start, int inc)
 							else
 							{
 								parts[i].temp = restrict_flt(elements[t].HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
-								s = 0;
+								typeChanged = false;
 							}
 #else
 							if (rand()%4==0) t = PT_SALT;
 							else t = PT_WTRV;
 #endif
 						}
-						else s = 0;
+						else typeChanged = false;
 					} else if (ctempl<elements[t].LowTemperature&&elements[t].LowTemperatureTransition>-1) {
 						// particle type change due to low temperature
 #ifdef REALISTIC
@@ -3986,7 +4007,7 @@ void Simulation::update_particles_i(int start, int inc)
 							else
 							{
 								parts[i].temp = restrict_flt(elements[t].LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
-								s = 0;
+								typeChanged = false;
 							}
 						}
 #else
@@ -3999,13 +4020,13 @@ void Simulation::update_particles_i(int start, int inc)
 						}
 						else if (t==PT_LAVA) {
 							if (parts[i].ctype>0 && parts[i].ctype<PT_NUM && parts[i].ctype!=PT_LAVA) {
-								if (parts[i].ctype==PT_THRM&&pt>=elements[PT_BMTL].HighTemperature) s = 0;
-								else if ((parts[i].ctype==PT_VIBR || parts[i].ctype==PT_BVBR) && pt>=273.15f) s = 0;
+								if (parts[i].ctype==PT_THRM&&pt>=elements[PT_BMTL].HighTemperature) typeChanged = false;
+								else if ((parts[i].ctype==PT_VIBR || parts[i].ctype==PT_BVBR) && pt>=273.15f) typeChanged = false;
 								else if (elements[parts[i].ctype].HighTemperatureTransition==PT_LAVA) {
-									if (pt>=elements[parts[i].ctype].HighTemperature) s = 0;
+									if (pt>=elements[parts[i].ctype].HighTemperature) typeChanged = false;
 								}
-								else if (pt>=973.0f) s = 0; // freezing point for lava with any other (not listed in ptransitions as turning into lava) ctype
-								if (s) {
+								else if (pt>=973.0f) typeChanged = false; // freezing point for lava with any other (not listed in ptransitions as turning into lava) ctype
+								if (typeChanged) {
 									t = parts[i].ctype;
 									parts[i].ctype = PT_NONE;
 									if (t==PT_THRM) {
@@ -4020,11 +4041,11 @@ void Simulation::update_particles_i(int start, int inc)
 								}
 							}
 							else if (pt<973.0f) t = PT_STNE;
-							else s = 0;
+							else typeChanged = false;
 						}
-						else s = 0;
+						else typeChanged = false;
 					}
-					else s = 0;
+					else typeChanged = false;
 #ifdef REALISTIC
 					pt = restrict_flt(pt, MIN_TEMP, MAX_TEMP);
 					for (j=0; j<8; j++)
@@ -4032,26 +4053,36 @@ void Simulation::update_particles_i(int start, int inc)
 						parts[surround_hconduct[j]].temp = pt;
 					}
 #endif
-					if (s) { // particle type change occurred
-						if (t==PT_ICEI||t==PT_LAVA||t==PT_SNOW)
-							parts[i].ctype = parts[i].type;
-						if (!(t==PT_ICEI&&parts[i].ctype==PT_FRZW)) parts[i].life = 0;
-						if (elements[t].State==ST_GAS&&elements[parts[i].type].State!=ST_GAS)
-							pv[y/CELL][x/CELL] += 0.50f;
-						part_change_type(i,x,y,t);
-						if (t==PT_FIRE||t==PT_PLSM||t==PT_CFLM)
-							parts[i].life = rand()%50+120;
-						if (t==PT_LAVA) {
-							if (parts[i].ctype==PT_BRMT) parts[i].ctype = PT_BMTL;
-							else if (parts[i].ctype==PT_SAND) parts[i].ctype = PT_GLAS;
-							else if (parts[i].ctype==PT_BGLA) parts[i].ctype = PT_GLAS;
-							else if (parts[i].ctype==PT_PQRT) parts[i].ctype = PT_QRTZ;
-							parts[i].life = rand()%120+240;
-						}
-						if (t==PT_NONE) {
+					if (typeChanged)
+					{ // particle type change occurred
+						
+						if (t == PT_NONE) {
 							kill_part(i);
 							goto killed;
 						}
+
+						if (part->type != PT_ICEI && part->ctype != PT_FRZW)
+							part->life = 0;
+
+						if (t == PT_ICEI || t == PT_LAVA || t == PT_SNOW)
+							part->ctype = part->type;
+						else if (elements[t].State == ST_GAS && element->State != ST_GAS)
+/**/							pv[y / CELL][x / CELL] += 0.50f;
+						if (t == PT_FIRE || t == PT_PLSM || t == PT_CFLM)
+							part->life = rand() % 50 + 120;
+						else if (t == PT_LAVA)
+						{
+							if (part->ctype == PT_BRMT)
+								part->ctype = PT_BMTL;
+							else if (part->ctype == PT_SAND)
+								part->ctype = PT_GLAS;
+							else if (part->ctype == PT_BGLA)
+								part->ctype = PT_GLAS;
+							else if (part->ctype == PT_PQRT)
+								part->ctype = PT_QRTZ;
+							parts[i].life = rand() % 120 + 240;
+						}
+						part_change_type(i,x,y,t);
 					}
 
 					pt = parts[i].temp = restrict_flt(parts[i].temp, MIN_TEMP, MAX_TEMP);
