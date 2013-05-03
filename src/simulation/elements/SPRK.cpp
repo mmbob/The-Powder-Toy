@@ -173,10 +173,11 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 				
 				bool conducts = sim->elements[receiver].Properties & PROP_CONDUCTS;
 				if (!conducts &&
-					receiver != PT_SWCH && receiver != PT_PUMP && receiver != PT_GPMP &&
-					receiver != PT_HSWC && receiver != PT_PBCN && receiver != PT_LCRY &&
-					receiver != PT_PPIP && receiver != PT_NTCT && receiver != PT_PTCT &&
-					receiver != PT_INWR && receiver != PT_INST && receiver != PT_QRTZ)
+					receiver != PT_SWCH && receiver != PT_SPRK && receiver != PT_PUMP &&
+					receiver != PT_GPMP && receiver != PT_HSWC && receiver != PT_PBCN &&
+					receiver != PT_LCRY && receiver != PT_PPIP && receiver != PT_NTCT &&
+					receiver != PT_PTCT && receiver != PT_INWR && receiver != PT_INST &&
+					receiver != PT_QRTZ)
 					continue;
 
 				sender = ct;
@@ -251,6 +252,8 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 
 				if (pavg == PT_INSL)
 					continue; //Insulation blocks everything past here
+				if (!conducts && receiver != PT_INST && receiver != PT_QRTZ)
+					continue;
 				if (abs(rx) + abs(ry) >= 4 && sender != PT_SWCH && receiver != PT_SWCH)
 					continue; //Only switch conducts really far
 				if (receiver == sender && receiver != PT_INST)
@@ -320,8 +323,6 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 				default:
 					break;
 				}
-				if (!conducts)
-					continue;
 				conduct:
 				//Yay, passed normal conduction rules, check a few last things and change receiver to spark
 				if (receiver==PT_WATR||receiver==PT_SLTW) {
