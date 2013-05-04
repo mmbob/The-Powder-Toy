@@ -181,7 +181,7 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 					continue;
 
 				sender = ct;
-				pavg = sim->fast_parts_avg(x, y, rx, ry, PT_INSL);
+				pavg = sim->fast_parts_avg(x, y, x + rx, y + ry, PT_INSL);
 				//receiver is the element SPRK is trying to conduct to
 				//sender is the element the SPRK is on
 				//First, some checks usually for (de)activation of elements

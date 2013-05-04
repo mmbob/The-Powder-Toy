@@ -160,7 +160,7 @@ public:
 		dx, dy = Change in position
 		t = Type to check for (?)
 		*/
-	TPT_NO_INLINE int fast_parts_avg(int x, int y, int dx, int dy, int t);
+	TPT_NO_INLINE int fast_parts_avg(int x1, int y1, int x2, int y2, int t);
 	void create_arc(int sx, int sy, int dx, int dy, int midpoints, int variance, int type, int flags);
 	int nearest_part(int ci, int t, int max_d);
 	void update_particles_i(int start, int inc);

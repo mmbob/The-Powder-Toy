@@ -64,7 +64,7 @@ int Element_SWCH::update(UPDATE_FUNC_ARGS)
 				r = pmap[y+ry][x+rx];
 				if (!r)
 					continue;
-				if (sim->fast_parts_avg(x, y, rx, ry, PT_INSL)!=PT_INSL) {
+				if (sim->fast_parts_avg(x, y, x + rx, y + ry, PT_INSL)!=PT_INSL) {
 					rt = r&0xFF;
 					if (rt==PT_SWCH)
 					{

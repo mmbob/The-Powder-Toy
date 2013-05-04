@@ -1888,10 +1888,10 @@ int Simulation::parts_avg(int ci, int ni,int t)
 	return PT_NONE;
 }
 
-int Simulation::fast_parts_avg(int x, int y, int dx, int dy, int t)
+int Simulation::fast_parts_avg(int x1, int y1, int x2, int y2, int t)
 {
-	int averageX = x + dx / 2;
-	int averageY = y + dy / 2;
+	int averageX = (x1 + x2) / 2;
+	int averageY = (y1 + y2) / 2;
 	int partIndex = pmap[averageY][averageX] >> 8;
 	if (partIndex == 0)
 		return PT_NONE;
