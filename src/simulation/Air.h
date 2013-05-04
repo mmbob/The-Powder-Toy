@@ -14,15 +14,23 @@ public:
 	unsigned char (*emap)[XRES/CELL];
 	float (*fvx)[XRES/CELL];
 	float (*fvy)[XRES/CELL];
-	//
+
+	// Velocity in the X direction for each cell
 	float vx[YRES/CELL][XRES/CELL];
 	float ovx[YRES/CELL][XRES/CELL];
+
+	// Velocity in the Y direction for each cell
 	float vy[YRES/CELL][XRES/CELL];
 	float ovy[YRES/CELL][XRES/CELL];
+
+	// Pressure for each cell
 	float pv[YRES/CELL][XRES/CELL];
 	float opv[YRES/CELL][XRES/CELL];
+
+	// Ambient heat map
 	float hv[YRES/CELL][XRES/CELL];
-	float ohv[YRES/CELL][XRES/CELL]; // Ambient Heat
+	float ohv[YRES/CELL][XRES/CELL];
+
 	unsigned char bmap_blockair[YRES/CELL][XRES/CELL];
 	unsigned char bmap_blockairh[YRES/CELL][XRES/CELL];
 	float kernel[9];

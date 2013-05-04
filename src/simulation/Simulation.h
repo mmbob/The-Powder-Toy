@@ -78,27 +78,36 @@ public:
 	int GSPEED;
 	unsigned char gol[YRES][XRES];
 	unsigned char gol2[YRES][XRES][NGOL+1];
-	//Air sim
-	float (*vx)[XRES/CELL];
-	float (*vy)[XRES/CELL];
-	float (*pv)[XRES/CELL];
-	float (*hv)[XRES/CELL];
+
+	
+	float (*vx)[XRES/CELL];		// Velocity in the X direction for each cell
+	float (*vy)[XRES/CELL];		// Velocity in the Y direction for each cell
+	float (*pv)[XRES/CELL];		// Pressure for each cell
+	float (*hv)[XRES/CELL];		// Ambient heat map
+
+	float& velocityx(int x, int y);
+	float& velocityy(int x, int y);
+	float& pressure(int x, int y);
+	float& ambientheat(int x, int y);
+
 	//Gravity sim
 	float *gravx;//gravx[(YRES/CELL) * (XRES/CELL)];
 	float *gravy;//gravy[(YRES/CELL) * (XRES/CELL)];
 	float *gravp;//gravp[(YRES/CELL) * (XRES/CELL)];
 	float *gravmap;//gravmap[(YRES/CELL) * (XRES/CELL)];
+
 	//Walls
 	unsigned char bmap[YRES/CELL][XRES/CELL];
 	unsigned char emap[YRES/CELL][XRES/CELL];
 	float fvx[YRES/CELL][XRES/CELL];
 	float fvy[YRES/CELL][XRES/CELL];
-	//Particles
-	Particle parts[NPART];
-	int pmap[YRES][XRES];
-	int photons[YRES][XRES];
-	int pmap_count[YRES][XRES];
-	//
+
+	
+	Particle parts[NPART];		// Master particle array
+	int pmap[YRES][XRES];		// Maps y, x coordinates to a particle
+	int photons[YRES][XRES];	// Maps y, x coordinates to an energy particle
+	int pmap_count[YRES][XRES];	// Maps y, x coordinates to the number of particles at that place
+
 	int edgeMode;
 	int gravityMode;
 	//int airMode;
