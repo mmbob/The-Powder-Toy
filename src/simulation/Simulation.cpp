@@ -3339,6 +3339,408 @@ void Simulation::delete_part(int x, int y, int flags)//calls kill_part with the 
 	kill_part(i>>8);
 }
 
+int part_pressure_transition(Simulation* sim, int i, int x, int y)
+{
+	Particle* part = &sim->parts[i];
+	int t = part->type;
+	Element* element = &sim->elements[t];
+
+	float cellPressure = sim->pressure(x, y);
+	bool typeChanged = true;
+	float grav_pressure = 4 * fabs(sim->gravy[(y/CELL)*(XRES/CELL)+(x/CELL)])+fabs(sim->gravx[(y/CELL)*(XRES/CELL)+(x/CELL)]);
+	float pressure = std::max<float>(grav_pressure * 4, cellPressure);
+
+		// particle type change due to high pressure
+	if (pressure > element->HighPressure && element->HighPressureTransition > -1)
+	{
+		if (element->HighPressureTransition != PT_NUM)
+			t = element->HighPressureTransition;
+		else if (t == PT_BMTL)
+		{
+			if (pressure > 2.5f || (pressure > 1.0f && part->tmp == 1))
+				t = PT_BRMT;
+			else
+				typeChanged = false;
+		}
+		else
+			typeChanged = false;
+	}
+		// particle type change due to low pressure
+	else if (cellPressure < element->LowPressure && element->LowPressureTransition > -1)
+	{
+		if (element->LowPressureTransition != PT_NUM)
+			t = element->LowPressureTransition;
+		else
+			typeChanged = false;
+	}
+	else
+		typeChanged = false;
+		// particle type change occurred
+	if (typeChanged)
+	{
+		if (t == PT_NONE)
+		{
+			sim->kill_part(i);
+			return t;
+		}
+		part->life = 0;
+		sim->part_change_type(i,x,y,t);
+		if (t == PT_FIRE)
+			part->life = rand() % 50 + 120;
+	}
+
+	return t;
+}
+
+int part_temp_transition(Simulation* sim, int i, int x, int y)
+{
+	Particle* part = &sim->parts[i];
+	int t = part->type;
+	Element* element = &sim->elements[t];
+
+	float temperature = part->temp;
+
+	float ctemph = temperature;
+	float ctempl = temperature;
+
+	float cellPressure = sim->pressure(x, y);
+
+	// change boiling point with pressure
+	if ((element->State == ST_LIQUID &&
+		element->HighTemperatureTransition > -1 &&element->HighTemperatureTransition < PT_NUM &&
+		sim->elements[element->HighTemperatureTransition].State == ST_GAS) ||
+		t == PT_LNTG || t == PT_SLTW)
+	{
+		ctemph -= 2.0f * cellPressure;
+	}
+	else if ((element->State == ST_GAS &&
+		element->LowTemperatureTransition > -1 && element->LowTemperatureTransition < PT_NUM &&
+		sim->elements[element->LowTemperatureTransition].State == ST_LIQUID) ||
+		t == PT_WTRV)
+	{
+		ctempl -= 2.0f*cellPressure;
+	}
+
+	bool typeChanged = true;
+
+	//A fix for ice with ctype = 0
+	if ((t==PT_ICEI || t==PT_SNOW) && (part->ctype==0 || part->ctype>=PT_NUM || part->ctype==PT_ICEI || part->ctype==PT_SNOW))
+		part->ctype = PT_WATR;
+
+	// particle type change due to high temperature
+	if (ctemph > element->HighTemperature && element->HighTemperatureTransition > -1)
+	{
+#ifdef REALISTIC
+		float pt = part->temp;
+		float dbt = ctempl - pt;
+		if (element->HighTemperatureTransition!=PT_NUM)
+		{
+			if (platent[t] <= (c_heat - (element->HighTemperature - dbt)*c_Cm))
+			{
+				pt = (c_heat - platent[t])/c_Cm;
+				t = element->HighTemperatureTransition;
+			}
+			else
+			{
+				part->temp = restrict_flt(element->HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
+				typeChanged = false;
+			}
+		}
+#else
+		if (element->HighTemperatureTransition != PT_NUM)
+			t = element->HighTemperatureTransition;
+#endif
+		else if (t==PT_ICEI || t==PT_SNOW)
+		{
+			if (part->ctype < PT_NUM && part->ctype != t)
+			{
+				if (sim->elements[part->ctype].LowTemperatureTransition == t && temperature <= sim->elements[part->ctype].LowTemperature)
+					typeChanged = false;
+				else
+				{
+#ifdef REALISTIC
+					//One ice table value for all it'typeChanged kinds
+					if (platent[t] <= (c_heat - (sim->elements[part->ctype].LowTemperature - dbt)*c_Cm))
+					{
+						pt = (c_heat - platent[t])/c_Cm;
+						t = part->ctype;
+						part->ctype = PT_NONE;
+						part->life = 0;
+					}
+					else
+					{
+						part->temp = restrict_flt(sim->elements[part->ctype].LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
+						typeChanged = false;
+					}
+#else
+					t = part->ctype;
+					part->ctype = PT_NONE;
+					part->life = 0;
+#endif
+				}
+			}
+			else
+				typeChanged = false;
+		}
+		else if (t==PT_SLTW) {
+#ifdef REALISTIC
+			if (platent[t] <= (c_heat - (element->HighTemperature - dbt)*c_Cm))
+			{
+				pt = (c_heat - platent[t])/c_Cm;
+
+				if (rand()%4==0) t = PT_SALT;
+				else t = PT_WTRV;
+			}
+			else
+			{
+				part->temp = restrict_flt(element->HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
+				typeChanged = false;
+			}
+#else
+			if (rand()%4==0) t = PT_SALT;
+			else t = PT_WTRV;
+#endif
+		}
+		else typeChanged = false;
+	} else if (ctempl < element->LowTemperature && element->LowTemperatureTransition > -1) {
+		// particle type change due to low temperature
+#ifdef REALISTIC
+		float dbt = ctempl - temperature;
+		if (element->LowTemperatureTransition!=PT_NUM)
+		{
+			if (platent[element->LowTemperatureTransition] >= (c_heat - (element->LowTemperature - dbt)*c_Cm))
+			{
+				temperature = (c_heat + platent[element->LowTemperatureTransition])/c_Cm;
+				t = element->LowTemperatureTransition;
+			}
+			else
+			{
+				part->temp = restrict_flt(element->LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
+				typeChanged = false;
+			}
+		}
+#else
+		if (element->LowTemperatureTransition!=PT_NUM)
+			t = element->LowTemperatureTransition;
+#endif
+		else if (t==PT_WTRV)
+		{
+			if (temperature < 273.0f)
+				t = PT_RIME;
+			else
+				t = PT_DSTW;
+		}
+		else if (t==PT_LAVA) {
+			if (part->ctype>0 && part->ctype<PT_NUM && part->ctype!=PT_LAVA) {
+				if (part->ctype==PT_THRM&&temperature >= sim->elements[PT_BMTL].HighTemperature)
+					typeChanged = false;
+				else if ((part->ctype == PT_VIBR || part->ctype == PT_BVBR) && temperature >= 273.15f)
+					typeChanged = false;
+				else if (sim->elements[part->ctype].HighTemperatureTransition == PT_LAVA)
+				{
+					if (temperature>=sim->elements[part->ctype].HighTemperature)
+						typeChanged = false;
+				}
+				else if (temperature >= 973.0f)
+					typeChanged = false; // freezing point for lava with any other (not listed in ptransitions as turning into lava) ctype
+				if (typeChanged)
+				{
+					t = part->ctype;
+					part->ctype = PT_NONE;
+					if (t==PT_THRM)
+					{
+						part->tmp = 0;
+						t = PT_BMTL;
+					}
+					if (t==PT_PLUT)
+					{
+						part->tmp = 0;
+						t = PT_LAVA;
+					}
+				}
+			}
+			else if (temperature < 973.0f)
+				t = PT_STNE;
+			else
+				typeChanged = false;
+		}
+		else
+			typeChanged = false;
+	}
+	else
+		typeChanged = false;
+#ifdef REALISTIC
+	pt = restrict_flt(pt, MIN_TEMP, MAX_TEMP);
+	for (j=0; j<8; j++)
+	{
+		parts[surround_hconduct[j]].temp = pt;
+	}
+#endif
+	if (typeChanged)
+	{ // particle type change occurred
+
+		if (t == PT_NONE)
+		{
+			sim->kill_part(i);
+			return t;
+		}
+
+		if (part->type != PT_ICEI && part->ctype != PT_FRZW)
+			part->life = 0;
+
+		if (t == PT_ICEI || t == PT_LAVA || t == PT_SNOW)
+			part->ctype = part->type;
+		else if (element->State == ST_GAS && element->State != ST_GAS)
+			sim->pressure(x, y) = cellPressure += 0.50f;
+		if (t == PT_FIRE || t == PT_PLSM || t == PT_CFLM)
+			part->life = rand() % 50 + 120;
+		else if (t == PT_LAVA)
+		{
+			if (part->ctype == PT_BRMT)
+				part->ctype = PT_BMTL;
+			else if (part->ctype == PT_SAND)
+				part->ctype = PT_GLAS;
+			else if (part->ctype == PT_BGLA)
+				part->ctype = PT_GLAS;
+			else if (part->ctype == PT_PQRT)
+				part->ctype = PT_QRTZ;
+			part->life = rand() % 120 + 240;
+		}
+		sim->part_change_type(i,x,y,t);
+
+		element = &sim->elements[t];
+	}
+
+	temperature = part->temp;
+	if (t==PT_LAVA) {
+		part->life = restrict_flt((part->temp-700)/7, 0.0f, 400.0f);
+		if (part->ctype==PT_THRM&&part->tmp>0)
+		{
+			part->tmp--;
+			part->temp = 3500;
+		}
+		if (part->ctype==PT_PLUT&&part->tmp>0)
+		{
+			part->tmp--;
+			part->temp = MAX_TEMP;
+		}
+	}
+
+	return t;
+}
+
+float part_conduct_heat(Simulation* sim, int i, int x, int y, int surround[8])
+{
+	Particle* part = &sim->parts[i];
+	int t = part->type;
+	Element* element = &sim->elements[t];
+
+	float gel_scale = 1.0f;
+	if (t == PT_GEL)
+		gel_scale = part->tmp*2.55f;
+
+	if (!sim->legacy_enable)
+	{
+		if (y >= 2 && y < YRES + 2 && (element->Properties&TYPE_LIQUID) && (t!=PT_GEL || gel_scale>(1+rand()%255))) //some heat convection for liquids
+		{
+			int r = sim->pmap[y-2][x];
+			int otherType = r & 0xFF;
+			int otherIndex = r >> 8;
+			if (r != 0 && part->type == otherType && part->temp > sim->parts[otherIndex].temp)
+				std::swap(part->temp, sim->parts[otherIndex].temp);
+		}
+	}
+
+	float temperature = 0;
+
+			//heat transfer code
+#ifdef REALISTIC
+	if (t&&(t!=PT_HSWC||part->life==10)&&(element->HeatConduct*gel_scale))
+#else
+	if ((t!=PT_HSWC||part->life==10)&&(element->HeatConduct*gel_scale)>(rand()%250))
+#endif
+	{
+		int h_count = 0;
+		float c_Cm = 0.0f;
+		float c_heat = 0.0f;
+		if (sim->aheat_enable && !(element->Properties & PROP_NOAMBHEAT))
+		{
+#ifdef REALISTIC
+			c_heat = part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight) + hv[y/CELL][x/CELL]*100*(cellPressure+273.15f)/256;
+			c_Cm = 96.645/element->HeatConduct*gel_scale*fabs(element->Weight)  + 100*(cellPressure+273.15f)/256;
+			pt = c_heat/c_Cm;
+			pt = restrict_flt(pt, -MAX_TEMP+MIN_TEMP, MAX_TEMP-MIN_TEMP);
+			part->temp = pt;
+			//Pressure increase from heat (temporary)
+			cellPressure += (pt-hv[y/CELL][x/CELL])*0.004;
+			hv[y/CELL][x/CELL] = pt;
+#else
+			float& aheat = sim->ambientheat(x, y);
+			c_heat = (aheat - part->temp)*0.04;
+			c_heat = restrict_flt(c_heat, -MAX_TEMP+MIN_TEMP, MAX_TEMP-MIN_TEMP);
+			part->temp += c_heat;
+			aheat -= c_heat;
+#endif
+		}
+		c_heat = 0.0f;
+		c_Cm = 0.0f;
+
+		int surround_hconduct[8];
+		for (int j = 0; j < 8; j++)
+		{
+			surround_hconduct[j] = i;
+			int r = surround[j];
+			if (!r)
+				continue;
+			int rt = r&0xFF;
+			if (rt && sim->elements[rt].HeatConduct && (rt!=PT_HSWC || sim->parts[r>>8].life==10)
+				&& (t!=PT_FILT||(rt!=PT_BRAY&&rt!=PT_BIZR&&rt!=PT_BIZRG))
+				&& (rt!=PT_FILT||(t!=PT_BRAY&&t!=PT_PHOT&&t!=PT_BIZR&&t!=PT_BIZRG))
+				&& (t!=PT_ELEC||rt!=PT_DEUT)
+				&& (t!=PT_DEUT||rt!=PT_ELEC))
+			{
+				surround_hconduct[j] = r>>8;
+#ifdef REALISTIC
+				if (rt==PT_GEL)
+					gel_scale = parts[r>>8].tmp*2.55f;
+				else gel_scale = 1.0f;
+
+				c_heat += parts[r>>8].temp*96.645/elements[rt].HeatConduct*gel_scale*fabs(elements[rt].Weight);
+				c_Cm += 96.645/elements[rt].HeatConduct*gel_scale*fabs(elements[rt].Weight);
+#else
+				c_heat += sim->parts[r>>8].temp;
+#endif
+				h_count++;
+			}
+		}
+#ifdef REALISTIC
+		if (t==PT_GEL)
+			gel_scale = part->tmp*2.55f;
+		else gel_scale = 1.0f;
+
+		if (t == PT_PHOT)
+			pt = (c_heat+part->temp*96.645)/(c_Cm+96.645);
+		else
+			pt = (c_heat+part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight))/(c_Cm+96.645/element->HeatConduct*gel_scale*fabs(element->Weight));
+
+		c_heat += part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight);
+		c_Cm += 96.645/element->HeatConduct*gel_scale*fabs(element->Weight);
+		part->temp = restrict_flt(pt, MIN_TEMP, MAX_TEMP);
+#else
+		temperature = (c_heat+part->temp)/(h_count+1);
+		temperature = part->temp = restrict_flt(temperature, MIN_TEMP, MAX_TEMP);
+		for (int j=0; j<8; j++)
+		{
+			sim->parts[surround_hconduct[j]].temp = temperature;
+		}
+#endif
+	}
+	else
+		part->temp = restrict_flt(part->temp, MIN_TEMP, MAX_TEMP);
+
+	return part->temp;
+}
+
 #include <ppl.h>
 
 void Simulation::update_particles_i(int start, int inc)
@@ -3636,352 +4038,74 @@ void Simulation::update_particles_i(int start, int inc)
 		std::fill(elementCount, elementCount+PT_NUM, 0);
 	}
 
-	concurrency::parallel_for(0, parts_lastActiveIndex, [&](int i) {
-		if (parts[i].type)
-		{
-			int t = parts[i].type;
-			Element* element = &elements[t];
-			Particle* part = &parts[i];
-
-			int x = (int) (part->x + 0.5f);
-			int y = (int) (part->y + 0.5f);
-
-			if (t < 0 || t >= PT_NUM || !element->Enabled)
-			{
-				safe_kill_part(i);
-				return;
-			}
-
-			int elem_properties = element->Properties;
-			if (part->life > 0 && (elem_properties & PROP_LIFE_DEC))
-			{
-				// automatically decrease life
-				part->life--;
-				if (part->life <= 0 && (elem_properties & (PROP_LIFE_KILL_DEC | PROP_LIFE_KILL)))
-				{
-					// kill on change to no life
-				safe_kill_part(i);
-					return;
-				}
-			}
-			else if (part->life <= 0 && (elem_properties & PROP_LIFE_KILL))
-			{
-				// kill if no life
-				safe_kill_part(i);
-				return;
-			}
-			
-			int wallType = bmap[y / CELL][y / CELL];
-			if (x < CELL || y < CELL || x >= XRES-CELL || y >= YRES-CELL ||
-				(wallType &&
-				(wallType==WL_WALL ||
-				wallType==WL_WALLELEC ||
-				wallType==WL_ALLOWAIR ||
-				(wallType==WL_DESTROYALL) ||
-				(wallType==WL_ALLOWLIQUID && element->Falldown!=2) ||
-				(wallType==WL_ALLOWSOLID && element->Falldown!=1) ||
-				(wallType==WL_ALLOWGAS && !(element->Properties&TYPE_GAS)) || //&& elements[t].Falldown!=0 && parts[i].type!=PT_FIRE && parts[i].type!=PT_SMKE && parts[i].type!=PT_CFLM) ||
-				(wallType==WL_ALLOWENERGY && !(element->Properties&TYPE_ENERGY)) ||
-				(wallType==WL_DETECT && (t==PT_METL || t==PT_SPRK)) ||
-				(wallType==WL_EWALL && !emap[y/CELL][x/CELL])) && (t!=PT_STKM) && (t!=PT_STKM2) && (t!=PT_FIGH)))
-			{
-				safe_kill_part(i);
-				return;
-			}
-
-			float& cellPressure = pressure(x, y);
-
-			float temperature = part->temp;
-
-			float ctemph = temperature;
-			float ctempl = temperature;
-
-			// change boiling point with pressure
-			if ((element->State == ST_LIQUID &&
-				element->HighTemperatureTransition > -1 &&element->HighTemperatureTransition < PT_NUM &&
-				elements[element->HighTemperatureTransition].State == ST_GAS) ||
-				t == PT_LNTG || t == PT_SLTW)
-			{
-				ctemph -= 2.0f * cellPressure;
-			}
-			else if ((element->State == ST_GAS &&
-				element->LowTemperatureTransition > -1 && element->LowTemperatureTransition < PT_NUM &&
-				elements[element->LowTemperatureTransition].State == ST_LIQUID) ||
-				t == PT_WTRV)
-			{
-				ctempl -= 2.0f*cellPressure;
-			}
-
-			bool typeChanged = true;
-
-			//A fix for ice with ctype = 0
-			if ((t==PT_ICEI || t==PT_SNOW) && (part->ctype==0 || part->ctype>=PT_NUM || part->ctype==PT_ICEI || part->ctype==PT_SNOW))
-				part->ctype = PT_WATR;
-
-			// particle type change due to high temperature
-			if (ctemph > element->HighTemperature && element->HighTemperatureTransition > -1)
-			{
-#ifdef REALISTIC
-				float pt = part->temp;
-				float dbt = ctempl - pt;
-				if (element->HighTemperatureTransition!=PT_NUM)
-				{
-					if (platent[t] <= (c_heat - (element->HighTemperature - dbt)*c_Cm))
-					{
-						pt = (c_heat - platent[t])/c_Cm;
-						t = element->HighTemperatureTransition;
-					}
-					else
-					{
-						part->temp = restrict_flt(element->HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
-						typeChanged = false;
-					}
-				}
-#else
-				if (element->HighTemperatureTransition != PT_NUM)
-					t = element->HighTemperatureTransition;
-#endif
-				else if (t==PT_ICEI || t==PT_SNOW)
-				{
-					if (part->ctype < PT_NUM && part->ctype != t)
-					{
-						if (elements[part->ctype].LowTemperatureTransition == t && temperature <= elements[part->ctype].LowTemperature)
-							typeChanged = false;
-						else
-						{
-#ifdef REALISTIC
-							//One ice table value for all it'typeChanged kinds
-							if (platent[t] <= (c_heat - (elements[part->ctype].LowTemperature - dbt)*c_Cm))
-							{
-								pt = (c_heat - platent[t])/c_Cm;
-								t = part->ctype;
-								part->ctype = PT_NONE;
-								part->life = 0;
-							}
-							else
-							{
-								part->temp = restrict_flt(elements[part->ctype].LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
-								typeChanged = false;
-							}
-#else
-							t = part->ctype;
-							part->ctype = PT_NONE;
-							part->life = 0;
-#endif
-						}
-					}
-					else
-						typeChanged = false;
-				}
-				else if (t==PT_SLTW) {
-#ifdef REALISTIC
-					if (platent[t] <= (c_heat - (element->HighTemperature - dbt)*c_Cm))
-					{
-						pt = (c_heat - platent[t])/c_Cm;
-
-						if (rand()%4==0) t = PT_SALT;
-						else t = PT_WTRV;
-					}
-					else
-					{
-						part->temp = restrict_flt(element->HighTemperature - dbt, MIN_TEMP, MAX_TEMP);
-						typeChanged = false;
-					}
-#else
-					if (rand()%4==0) t = PT_SALT;
-					else t = PT_WTRV;
-#endif
-				}
-				else typeChanged = false;
-			} else if (ctempl < element->LowTemperature && element->LowTemperatureTransition > -1) {
-				// particle type change due to low temperature
-#ifdef REALISTIC
-				float dbt = ctempl - temperature;
-				if (element->LowTemperatureTransition!=PT_NUM)
-				{
-					if (platent[element->LowTemperatureTransition] >= (c_heat - (element->LowTemperature - dbt)*c_Cm))
-					{
-						temperature = (c_heat + platent[element->LowTemperatureTransition])/c_Cm;
-						t = element->LowTemperatureTransition;
-					}
-					else
-					{
-						part->temp = restrict_flt(element->LowTemperature - dbt, MIN_TEMP, MAX_TEMP);
-						typeChanged = false;
-					}
-				}
-#else
-				if (element->LowTemperatureTransition!=PT_NUM)
-					t = element->LowTemperatureTransition;
-#endif
-				else if (t==PT_WTRV)
-				{
-					if (temperature < 273.0f)
-						t = PT_RIME;
-					else
-						t = PT_DSTW;
-				}
-				else if (t==PT_LAVA) {
-					if (part->ctype>0 && part->ctype<PT_NUM && part->ctype!=PT_LAVA) {
-						if (part->ctype==PT_THRM&&temperature >= elements[PT_BMTL].HighTemperature)
-							typeChanged = false;
-						else if ((part->ctype == PT_VIBR || part->ctype == PT_BVBR) && temperature >= 273.15f)
-							typeChanged = false;
-						else if (elements[part->ctype].HighTemperatureTransition == PT_LAVA)
-						{
-							if (temperature>=elements[part->ctype].HighTemperature)
-								typeChanged = false;
-						}
-						else if (temperature >= 973.0f)
-							typeChanged = false; // freezing point for lava with any other (not listed in ptransitions as turning into lava) ctype
-						if (typeChanged)
-						{
-							t = part->ctype;
-							part->ctype = PT_NONE;
-							if (t==PT_THRM)
-							{
-								part->tmp = 0;
-								t = PT_BMTL;
-							}
-							if (t==PT_PLUT)
-							{
-								part->tmp = 0;
-								t = PT_LAVA;
-							}
-						}
-					}
-					else if (temperature < 973.0f)
-						t = PT_STNE;
-					else
-						typeChanged = false;
-				}
-				else
-					typeChanged = false;
-			}
-			else
-				typeChanged = false;
-#ifdef REALISTIC
-			pt = restrict_flt(pt, MIN_TEMP, MAX_TEMP);
-			for (j=0; j<8; j++)
-			{
-				parts[surround_hconduct[j]].temp = pt;
-			}
-#endif
-			if (typeChanged)
-			{ // particle type change occurred
-
-				if (t == PT_NONE)
-				{
-					kill_part(i);
-					return;
-				}
-
-				if (part->type != PT_ICEI && part->ctype != PT_FRZW)
-					part->life = 0;
-
-				if (t == PT_ICEI || t == PT_LAVA || t == PT_SNOW)
-					part->ctype = part->type;
-				else if (element->State == ST_GAS && element->State != ST_GAS)
-/**/					pv[y / CELL][x / CELL] += 0.50f;
-				if (t == PT_FIRE || t == PT_PLSM || t == PT_CFLM)
-					part->life = rand() % 50 + 120;
-				else if (t == PT_LAVA)
-				{
-					if (part->ctype == PT_BRMT)
-						part->ctype = PT_BMTL;
-					else if (part->ctype == PT_SAND)
-						part->ctype = PT_GLAS;
-					else if (part->ctype == PT_BGLA)
-						part->ctype = PT_GLAS;
-					else if (part->ctype == PT_PQRT)
-						part->ctype = PT_QRTZ;
-					part->life = rand() % 120 + 240;
-				}
-				part_change_type(i,x,y,t);
-
-				element = &elements[t];
-			}
-
-			temperature = part->temp = restrict_flt(part->temp, MIN_TEMP, MAX_TEMP);
-			if (t==PT_LAVA) {
-				part->life = restrict_flt((part->temp-700)/7, 0.0f, 400.0f);
-				if (part->ctype==PT_THRM&&part->tmp>0)
-				{
-					part->tmp--;
-					part->temp = 3500;
-				}
-				if (part->ctype==PT_PLUT&&part->tmp>0)
-				{
-					part->tmp--;
-					part->temp = MAX_TEMP;
-				}
-			}
-
-			typeChanged = true;
-			float grav_pressure = 4 * fabs(gravy[(y/CELL)*(XRES/CELL)+(x/CELL)])+fabs(gravx[(y/CELL)*(XRES/CELL)+(x/CELL)]);
-			float pressure = std::max<float>(grav_pressure * 4, pv[y / CELL][x / CELL]);
-
-				// particle type change due to high pressure
-			if (pressure > element->HighPressure && element->HighPressureTransition > -1)
-			{
-				if (element->HighPressureTransition != PT_NUM)
-					t = element->HighPressureTransition;
-				else if (t == PT_BMTL)
-				{
-					if (pressure > 2.5f || (pressure > 1.0f && part->tmp == 1))
-						t = PT_BRMT;
-					else
-						typeChanged = false;
-				}
-				else
-					typeChanged = false;
-			}
-				// particle type change due to low pressure
-			else if (cellPressure < element->LowPressure && element->LowPressureTransition > -1)
-			{
-				if (element->LowPressureTransition != PT_NUM)
-					t = element->LowPressureTransition;
-				else
-					typeChanged = false;
-			}
-			else
-				typeChanged = false;
-				// particle type change occurred
-			if (typeChanged)
-			{
-				element = &elements[t];	// Update element pointer because the type has changed
-
-				part->life = 0;
-				part_change_type(i,x,y,t);
-				if (t == PT_FIRE)
-					part->life = rand() % 50 + 120;
-				if (t == PT_NONE)
-				{
-					kill_part(i);
-					return;
-				}
-			}
-		}
-	});
-			//the main particle loop function, goes over all particles.
-
-	for (int i = 0; i<=parts_lastActiveIndex; i++)
+	concurrency::parallel_for(0, parts_lastActiveIndex + 1, [&](int i)
 	{
-		int t = parts[i].type;
+		Particle* part = &parts[i];
+		int t = part->type;
 		if (t == 0)
-			continue;
-
+			return;
 		Element* element = &elements[t];
 		if (t < 0 || t >= PT_NUM || !element->Enabled)
 		{
-			kill_part(i);
-			continue;
+			safe_kill_part(i);
+			return;
 		}
 
-		Particle* part = &parts[i];
+		int x = (int) (part->x + 0.5f);
+		int y = (int) (part->y + 0.5f);
 
-		int x = (int)(part->x+0.5f);
-		int y = (int)(part->y+0.5f);
+		int elem_properties = element->Properties;
+		if (part->life > 0 && (elem_properties & PROP_LIFE_DEC))
+		{
+			// automatically decrease life
+			part->life--;
+			if (part->life <= 0 && (elem_properties & (PROP_LIFE_KILL_DEC | PROP_LIFE_KILL)))
+			{
+				// kill on change to no life
+				safe_kill_part(i);
+				return;
+			}
+		}
+		else if (part->life <= 0 && (elem_properties & PROP_LIFE_KILL))
+		{
+			// kill if no life
+			safe_kill_part(i);
+			return;
+		}
+			
+		int wallType = bmap[y / CELL][y / CELL];
+		if (x < CELL || y < CELL || x >= XRES-CELL || y >= YRES-CELL ||
+			(wallType &&
+			(wallType==WL_WALL ||
+			wallType==WL_WALLELEC ||
+			wallType==WL_ALLOWAIR ||
+			(wallType==WL_DESTROYALL) ||
+			(wallType==WL_ALLOWLIQUID && element->Falldown!=2) ||
+			(wallType==WL_ALLOWSOLID && element->Falldown!=1) ||
+			(wallType==WL_ALLOWGAS && !(element->Properties&TYPE_GAS)) || //&& elements[t].Falldown!=0 && parts[i].type!=PT_FIRE && parts[i].type!=PT_SMKE && parts[i].type!=PT_CFLM) ||
+			(wallType==WL_ALLOWENERGY && !(element->Properties&TYPE_ENERGY)) ||
+			(wallType==WL_DETECT && (t==PT_METL || t==PT_SPRK)) ||
+			(wallType==WL_EWALL && !emap[y/CELL][x/CELL])) && (t!=PT_STKM) && (t!=PT_STKM2) && (t!=PT_FIGH)))
+		{
+			safe_kill_part(i);
+			return;
+		}
+
+		part_temp_transition(this, i, x, y);
+		part_pressure_transition(this, i, x, y);
+	});
+			//the main particle loop function, goes over all particles.
+
+	for (int i = 0; i <= parts_lastActiveIndex; i++)
+	{
+		Particle* part = &parts[i];
+		int t = part->type;
+		if (t == 0)
+			continue;
+		Element* element = &elements[t];
+
+		int x = (int)(part->x + 0.5f);
+		int y = (int)(part->y + 0.5f);
 		int cellX = x / CELL;
 		int cellY = y / CELL;
 
@@ -4000,7 +4124,7 @@ void Simulation::update_particles_i(int start, int inc)
 		cellVelocityX = cellVelocityX * element->AirLoss + element->AirDrag * part->vx;
 		cellVelocityY = cellVelocityY * element->AirLoss + element->AirDrag * part->vy;
 
-		if (elements[t].HotAir)
+		if (element->HotAir)
 		{
 			if (t==PT_GAS||t==PT_NBLE)
 			{
@@ -4079,6 +4203,16 @@ void Simulation::update_particles_i(int start, int inc)
 		part->vx += element->Advection * cellVelocityX + pGravX;
 		part->vy += element->Advection * cellVelocityY + pGravY;
 
+		if (element->Diffusion != 0)
+		{
+#ifdef REALISTIC
+			part->vx += 0.05*sqrtf(part->temp)*element->Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
+			part->vy += 0.05*sqrtf(part->temp)*element->Diffusion*(rand()/(0.5f*RAND_MAX)-1.0f);
+#else
+			part->vx += element->Diffusion * (rand() / (0.5f * RAND_MAX) - 1.0f);
+			part->vy += element->Diffusion * (rand() / (0.5f * RAND_MAX) - 1.0f);
+#endif
+		}
 
 		int surround[8];
 		int surround_index = 0;
@@ -4101,106 +4235,7 @@ void Simulation::update_particles_i(int start, int inc)
 			}
 		}
 
-		float gel_scale = 1.0f;
-		if (t==PT_GEL)
-			gel_scale = part->tmp*2.55f;
-
-		if (!legacy_enable)
-		{
-			if (y >= 2 && y < YRES + 2 && (element->Properties&TYPE_LIQUID) && (t!=PT_GEL || gel_scale>(1+rand()%255))) //some heat convection for liquids
-			{
-				int r = pmap[y-2][x];
-				int otherType = r & 0xFF;
-				int otherIndex = r >> 8;
-				if (r != 0 && part->type == otherType && part->temp > parts[otherIndex].temp)
-					std::swap(part->temp, parts[otherIndex].temp);
-			}
-		}
-
-		float temperature = 0;
-
-		//heat transfer code
-#ifdef REALISTIC
-		if (t&&(t!=PT_HSWC||part->life==10)&&(element->HeatConduct*gel_scale))
-#else
-		if ((t!=PT_HSWC||part->life==10)&&(element->HeatConduct*gel_scale)>(rand()%250))
-#endif
-		{
-			int h_count = 0;
-			float c_Cm = 0.0f;
-			float c_heat = 0.0f;
-			if (aheat_enable && !(element->Properties&PROP_NOAMBHEAT))
-			{
-#ifdef REALISTIC
-				c_heat = part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight) + hv[y/CELL][x/CELL]*100*(cellPressure+273.15f)/256;
-				c_Cm = 96.645/element->HeatConduct*gel_scale*fabs(element->Weight)  + 100*(cellPressure+273.15f)/256;
-				pt = c_heat/c_Cm;
-				pt = restrict_flt(pt, -MAX_TEMP+MIN_TEMP, MAX_TEMP-MIN_TEMP);
-				part->temp = pt;
-				//Pressure increase from heat (temporary)
-				cellPressure += (pt-hv[y/CELL][x/CELL])*0.004;
-				hv[y/CELL][x/CELL] = pt;
-#else
-				c_heat = (hv[y/CELL][x/CELL]-part->temp)*0.04;
-				c_heat = restrict_flt(c_heat, -MAX_TEMP+MIN_TEMP, MAX_TEMP-MIN_TEMP);
-				part->temp += c_heat;
-				hv[y/CELL][x/CELL] -= c_heat;
-#endif
-			}
-			c_heat = 0.0f;
-			c_Cm = 0.0f;
-			int surround_hconduct[8];
-			for (int j = 0; j < 8; j++)
-			{
-				surround_hconduct[j] = i;
-				int r = surround[j];
-				if (!r)
-					continue;
-				int rt = r&0xFF;
-				if (rt&&elements[rt].HeatConduct&&(rt!=PT_HSWC||parts[r>>8].life==10)
-					&&(t!=PT_FILT||(rt!=PT_BRAY&&rt!=PT_BIZR&&rt!=PT_BIZRG))
-					&&(rt!=PT_FILT||(t!=PT_BRAY&&t!=PT_PHOT&&t!=PT_BIZR&&t!=PT_BIZRG))
-					&&(t!=PT_ELEC||rt!=PT_DEUT)
-					&&(t!=PT_DEUT||rt!=PT_ELEC))
-				{
-					surround_hconduct[j] = r>>8;
-#ifdef REALISTIC
-					if (rt==PT_GEL)
-						gel_scale = parts[r>>8].tmp*2.55f;
-					else gel_scale = 1.0f;
-
-					c_heat += parts[r>>8].temp*96.645/elements[rt].HeatConduct*gel_scale*fabs(elements[rt].Weight);
-					c_Cm += 96.645/elements[rt].HeatConduct*gel_scale*fabs(elements[rt].Weight);
-#else
-					c_heat += parts[r>>8].temp;
-#endif
-					h_count++;
-				}
-			}
-#ifdef REALISTIC
-			if (t==PT_GEL)
-				gel_scale = part->tmp*2.55f;
-			else gel_scale = 1.0f;
-
-			if (t == PT_PHOT)
-				pt = (c_heat+part->temp*96.645)/(c_Cm+96.645);
-			else
-				pt = (c_heat+part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight))/(c_Cm+96.645/element->HeatConduct*gel_scale*fabs(element->Weight));
-
-			c_heat += part->temp*96.645/element->HeatConduct*gel_scale*fabs(element->Weight);
-			c_Cm += 96.645/element->HeatConduct*gel_scale*fabs(element->Weight);
-			part->temp = restrict_flt(pt, MIN_TEMP, MAX_TEMP);
-#else
-			temperature = (c_heat+part->temp)/(h_count+1);
-			temperature = part->temp = restrict_flt(temperature, MIN_TEMP, MAX_TEMP);
-			for (int j=0; j<8; j++)
-			{
-				parts[surround_hconduct[j]].temp = temperature;
-			}
-#endif
-		}
-		else
-			part->temp = restrict_flt(part->temp, MIN_TEMP, MAX_TEMP);
+		part_conduct_heat(this, i, x, y, surround);
 
 		if (t==PT_LIFE)
 		{
@@ -4279,11 +4314,10 @@ void Simulation::update_particles_i(int start, int inc)
 		if (legacy_enable)//if heat sim is off
 			Element::legacyUpdate(this, i,x,y,surround_space,nt, parts, pmap);
 
-killed:
 		if (part->type == PT_NONE)//if its dead, skip to next particle
 			continue;
 
-		if (!part->vx && !part->vy)//if its not moving, skip to next particle, movement code it next
+		if (!part->vx && !part->vy)//if its not moving, skip to next particle, movement code is next
 			continue;
 
 		float mv = std::max<float>(fabsf(part->vx), fabsf(part->vy));
@@ -4552,12 +4586,11 @@ killed:
 					{
 						// allow diagonal movement if target position is blocked
 						// but no point trying this if particle is stuck in a block of identical particles
-						float dx = part->vx - part->vy*r;
-						float dy = part->vy + part->vx*r;
-						if (fabsf(dy)>fabsf(dx))
-							mv = fabsf(dy);
-						else
-							mv = fabsf(dx);
+						float dx = part->vx - part->vy * r;
+						float dy = part->vy + part->vx * r;
+
+						mv = std::max<float>(fabsf(dx), fabsf(dy));
+
 						dx /= mv;
 						dy /= mv;
 						if (do_move(i, x, y, clear_xf+dx, clear_yf+dy))
@@ -4568,7 +4601,7 @@ killed:
 						}
 						std::swap(dx, dy);
 						dx *= r;
-						dy *= r;
+						dy *= -r;
 						if (do_move(i, x, y, clear_xf+dx, clear_yf+dy))
 						{
 							part->vx *= element->Collision;
