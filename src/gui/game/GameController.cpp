@@ -193,10 +193,6 @@ GameController::~GameController()
 	{
 		delete options;
 	}
-	if(ui::Engine::Ref().GetWindow() == gameView)
-	{
-		ui::Engine::Ref().CloseWindow();
-	}
 	//deleted here because it refuses to be deleted when deleted from gameModel even with the same code
 	std::deque<Snapshot*> history = gameModel->GetHistory();
 	for(std::deque<Snapshot*>::iterator iter = history.begin(), end = history.end(); iter != end; ++iter)
@@ -214,7 +210,11 @@ GameController::~GameController()
 		delete *iter;
 	}
 	delete gameModel;
-	delete gameView;
+	if(ui::Engine::Ref().GetWindow() == gameView)
+	{
+		ui::Engine::Ref().CloseWindow();
+		delete gameView;
+	}
 }
 
 void GameController::HistoryRestore()
@@ -734,7 +734,7 @@ void GameController::ResetAir()
 	sim->air->Clear();
 	for (int i = 0; i < NPART; i++)
 	{
-		if (sim->parts[i].type == PT_QRTZ || sim->parts[i].type == PT_GLAS)
+		if (sim->parts[i].type == PT_QRTZ || sim->parts[i].type == PT_GLAS || sim->parts[i].type == PT_TUGN)
 		{
 			sim->parts[i].pavg[0] = sim->parts[i].pavg[1] = 0;
 		}

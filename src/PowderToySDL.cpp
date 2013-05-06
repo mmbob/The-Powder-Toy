@@ -5,6 +5,7 @@
 #include <time.h>
 #include "SDL.h"
 #ifdef WIN
+#define _WIN32_WINNT 0x0501	//Necessary for some macros and functions
 #include "SDL_syswm.h"
 #include <direct.h>
 #endif
@@ -15,6 +16,7 @@
 #include "graphics/Graphics.h"
 #if defined(LIN)
 #include "icon.h"
+#include <signal.h>
 #endif
 
 #ifndef WIN
@@ -546,22 +548,19 @@ int GetModifiers()
 
 // Returns true if the loaded position was set
 // Returns false if something went wrong: SDL_GetWMInfo failed or the loaded position was invalid
-bool LoadWindowPosition()
+bool LoadWindowPosition(int scale)
 {
 	SDL_SysWMinfo sysInfo;
 	SDL_VERSION(&sysInfo.version);
 	if (SDL_GetWMInfo(&sysInfo) > 0)
 	{
-		RECT rcWindow;
-		GetWindowRect(sysInfo.window, &rcWindow);
-
-		int windowW = rcWindow.right - rcWindow.left - 1;
-		int windowH = rcWindow.bottom - rcWindow.top - 1;
+		int windowW = (XRES + BARSIZE) * scale;
+		int windowH = (YRES + MENUSIZE) * scale;
 
 		int savedWindowX = Client::Ref().GetPrefInteger("WindowX", INT_MAX);
 		int savedWindowY = Client::Ref().GetPrefInteger("WindowY", INT_MAX);
 		
-				// Center the window on the primary desktop by default
+		// Center the window on the primary desktop by default
 		int newWindowX = (desktopWidth - windowW) / 2;
 		int newWindowY = (desktopHeight - windowH) / 2;
 
@@ -578,7 +577,7 @@ bool LoadWindowPosition()
 			monitor.cbSize = sizeof(monitor);
 			if (GetMonitorInfo(MonitorFromPoint(windowPoints[0], MONITOR_DEFAULTTONEAREST), &monitor) != 0)
 			{
-					// Only use the saved window position if it lies inside the visible screen
+				// Only use the saved window position if it lies inside the visible screen
 				if (PtInRect(&monitor.rcMonitor, windowPoints[0]) && PtInRect(&monitor.rcMonitor, windowPoints[1]))
 				{
 					newWindowX = savedWindowX;
@@ -588,7 +587,7 @@ bool LoadWindowPosition()
 				}
 				else
 				{
-						// Center the window on the nearest monitor
+					// Center the window on the nearest monitor
 					newWindowX = monitor.rcMonitor.left + (monitor.rcMonitor.right - monitor.rcMonitor.left - windowW) / 2;
 					newWindowY = monitor.rcMonitor.top + (monitor.rcMonitor.bottom - monitor.rcMonitor.top - windowH) / 2;
 				}
@@ -597,7 +596,7 @@ bool LoadWindowPosition()
 		
 		SetWindowPos(sysInfo.window, 0, newWindowX, newWindowY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 
-			// True if we didn't use the default, i.e. the position was valid
+		// True if we didn't use the default, i.e. the position was valid
 		return success;
 	}
 
@@ -615,8 +614,8 @@ bool SaveWindowPosition()
 		placement.length = sizeof(placement);
 		GetWindowPlacement(sysInfo.window, &placement);
 
-		Client::Ref().SetPref("WindowX", placement.rcNormalPosition.left);
-		Client::Ref().SetPref("WindowY", placement.rcNormalPosition.top);
+		Client::Ref().SetPref("WindowX", (int)placement.rcNormalPosition.left);
+		Client::Ref().SetPref("WindowY", (int)placement.rcNormalPosition.top);
 
 		return true;
 	}
@@ -625,6 +624,66 @@ bool SaveWindowPosition()
 }
 
 #endif
+
+void BlueScreen(char * detailMessage){
+	ui::Engine * engine = &ui::Engine::Ref();
+	engine->g->fillrect(0, 0, engine->GetWidth(), engine->GetHeight(), 17, 114, 169, 210);
+
+	std::string errorTitle = "ERROR";
+	std::string errorDetails = "Details: " + std::string(detailMessage);
+	std::string errorHelp = "An unrecoverable fault has occured, please report the error by visiting the website below\n"
+		"http://" SERVER;
+	int currentY = 0, width, height;
+	int errorWidth = 0;
+	Graphics::textsize(errorHelp.c_str(), errorWidth, height);
+	
+	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorTitle.c_str(), 255, 255, 255, 255);
+	Graphics::textsize(errorTitle.c_str(), width, height);
+	currentY += height + 4;
+
+	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorDetails.c_str(), 255, 255, 255, 255);
+	Graphics::textsize(errorTitle.c_str(), width, height);
+	currentY += height + 4;
+
+	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorHelp.c_str(), 255, 255, 255, 255);
+	Graphics::textsize(errorTitle.c_str(), width, height);
+	currentY += height + 4;
+	
+	//Death loop
+	SDL_Event event;	
+	while(true)
+	{
+		while (SDL_PollEvent(&event))
+			if(event.type == SDL_QUIT)
+				exit(-1);
+#ifdef OGLI
+		blit();
+#else
+		if(engine->Scale==2)
+			blit2(engine->g->vid, engine->Scale);
+		else
+			blit(engine->g->vid);
+#endif
+	}
+}
+
+void SigHandler(int signal)
+{
+	switch(signal){
+	case SIGSEGV:
+		BlueScreen("Memory read/write error");
+		break;
+	case SIGFPE:
+		BlueScreen("Floating point exception");
+		break;
+	case SIGILL:
+		BlueScreen("Program execution exception");
+		break;
+	case SIGABRT:
+		BlueScreen("Unexpected program abort");
+		break;
+	}
+}
 
 int main(int argc, char * argv[])
 {
@@ -685,12 +744,10 @@ int main(int argc, char * argv[])
 		tempScale = 1;
 
 	int sdlStatus = SDLOpen();
-	sdl_scrn = SDLSetScreen(tempScale, tempFullscreen);
-
 #ifdef WIN
-		// Must be after SDLSetScreen to account for scale
-	LoadWindowPosition();
+	LoadWindowPosition(tempScale);
 #endif
+	sdl_scrn = SDLSetScreen(tempScale, tempFullscreen);
 
 #ifdef OGLI
 	SDL_GL_SetAttribute (SDL_GL_DOUBLEBUFFER, 1);
@@ -723,108 +780,130 @@ int main(int argc, char * argv[])
 	engine->Begin(XRES+BARSIZE, YRES+MENUSIZE);
 	engine->SetFastQuit(Client::Ref().GetPrefBool("FastQuit", true));
 
-	GameController * gameController = new GameController();
-	engine->ShowWindow(gameController->GetView());
+#ifndef DEBUG
+	//Get ready to catch any dodgy errors
+	signal(SIGSEGV, SigHandler);
+	signal(SIGFPE, SigHandler);
+	signal(SIGILL, SigHandler);
+	signal(SIGABRT, SigHandler);
 
-	if(arguments["open"].length())
-	{
-#ifdef DEBUG
-		std::cout << "Loading " << arguments["open"] << std::endl;
 #endif
-		if(Client::Ref().FileExists(arguments["open"]))
+
+	GameController * gameController = NULL;
+#ifndef DEBUG
+	try {
+#endif
+
+		gameController = new GameController();
+		engine->ShowWindow(gameController->GetView());
+
+		if(arguments["open"].length())
 		{
+	#ifdef DEBUG
+			std::cout << "Loading " << arguments["open"] << std::endl;
+	#endif
+			if(Client::Ref().FileExists(arguments["open"]))
+			{
+				try
+				{
+					std::vector<unsigned char> gameSaveData = Client::Ref().ReadFile(arguments["open"]);
+					if(!gameSaveData.size())
+					{
+						new ErrorMessage("Error", "Could not read file");
+					}
+					else
+					{
+						SaveFile * newFile = new SaveFile(arguments["open"]);
+						GameSave * newSave = new GameSave(gameSaveData);
+						newFile->SetGameSave(newSave);
+						gameController->LoadSaveFile(newFile);
+						delete newFile;
+					}
+
+				}
+				catch(std::exception & e)
+				{
+					new ErrorMessage("Error", "Could not open save file:\n"+std::string(e.what())) ;
+				}
+			}
+			else
+			{
+				new ErrorMessage("Error", "Could not open file");
+			}
+		}
+
+		if(arguments["ptsave"].length())
+		{
+			engine->g->fillrect((engine->GetWidth()/2)-101, (engine->GetHeight()/2)-26, 202, 52, 0, 0, 0, 210);
+			engine->g->drawrect((engine->GetWidth()/2)-100, (engine->GetHeight()/2)-25, 200, 50, 255, 255, 255, 180);
+			engine->g->drawtext((engine->GetWidth()/2)-(Graphics::textwidth("Loading save...")/2), (engine->GetHeight()/2)-5, "Loading save...", style::Colour::InformationTitle.Red, style::Colour::InformationTitle.Green, style::Colour::InformationTitle.Blue, 255);
+
+	#ifdef OGLI
+			blit();
+	#else
+			if(engine->Scale==2)
+				blit2(engine->g->vid, engine->Scale);
+			else
+				blit(engine->g->vid);
+	#endif
+			std::string ptsaveArg = arguments["ptsave"];
 			try
 			{
-				std::vector<unsigned char> gameSaveData = Client::Ref().ReadFile(arguments["open"]);
-				if(!gameSaveData.size())
+			if(!ptsaveArg.find("ptsave:"))
+			{
+				std::string saveIdPart = "";
+				int saveId;
+				int hashPos = ptsaveArg.find('#');
+				if(hashPos != std::string::npos)
 				{
-					new ErrorMessage("Error", "Could not read file");
+					saveIdPart = ptsaveArg.substr(7, hashPos-7);
 				}
 				else
 				{
-					SaveFile * newFile = new SaveFile(arguments["open"]);
-					GameSave * newSave = new GameSave(gameSaveData);
-					newFile->SetGameSave(newSave);
-					gameController->LoadSaveFile(newFile);
-					delete newFile;
+					saveIdPart = ptsaveArg.substr(7);
 				}
+				if(saveIdPart.length())
+				{
+	#ifdef DEBUG
+					std::cout << "Got Ptsave: id: " <<  saveIdPart << std::endl;
+	#endif
+					saveId = format::StringToNumber<int>(saveIdPart);
+					if(!saveId)
+						throw std::runtime_error("Invalid Save ID");
 
+					SaveInfo * newSave = Client::Ref().GetSave(saveId, 0);
+					GameSave * newGameSave = new GameSave(Client::Ref().GetSaveData(saveId, 0));
+					newSave->SetGameSave(newGameSave);
+					if(!newSave)
+						throw std::runtime_error("Could not load save");
+
+					gameController->LoadSave(newSave);
+					delete newSave;
+				}
+				else
+				{
+					throw std::runtime_error("No Save ID");
+				}
 			}
-			catch(std::exception & e)
+			}
+			catch (std::exception & e)
 			{
-				new ErrorMessage("Error", "Could not open save file:\n"+std::string(e.what())) ;
+				new ErrorMessage("Error", "Invalid save link");
 			}
 		}
-		else
-		{
-			new ErrorMessage("Error", "Could not open file");
-		}
-	}
 
-	if(arguments["ptsave"].length())
+		EngineProcess();
+		
+	#ifdef WIN
+		SaveWindowPosition();
+	#endif
+
+#ifndef DEBUG
+	}
+	catch(...)
 	{
-		engine->g->fillrect((engine->GetWidth()/2)-101, (engine->GetHeight()/2)-26, 202, 52, 0, 0, 0, 210);
-		engine->g->drawrect((engine->GetWidth()/2)-100, (engine->GetHeight()/2)-25, 200, 50, 255, 255, 255, 180);
-		engine->g->drawtext((engine->GetWidth()/2)-(Graphics::textwidth("Loading save...")/2), (engine->GetHeight()/2)-5, "Loading save...", style::Colour::InformationTitle.Red, style::Colour::InformationTitle.Green, style::Colour::InformationTitle.Blue, 255);
-
-#ifdef OGLI
-		blit();
-#else
-		if(engine->Scale==2)
-			blit2(engine->g->vid, engine->Scale);
-		else
-			blit(engine->g->vid);
-#endif
-		std::string ptsaveArg = arguments["ptsave"];
-		try
-		{
-		if(!ptsaveArg.find("ptsave:"))
-		{
-			std::string saveIdPart = "";
-			int saveId;
-			int hashPos = ptsaveArg.find('#');
-			if(hashPos != std::string::npos)
-			{
-				saveIdPart = ptsaveArg.substr(7, hashPos-7);
-			}
-			else
-			{
-				saveIdPart = ptsaveArg.substr(7);
-			}
-			if(saveIdPart.length())
-			{
-#ifdef DEBUG
-				std::cout << "Got Ptsave: id: " <<  saveIdPart << std::endl;
-#endif
-				saveId = format::StringToNumber<int>(saveIdPart);
-				if(!saveId)
-					throw std::runtime_error("Invalid Save ID");
-
-				SaveInfo * newSave = Client::Ref().GetSave(saveId, 0);
-				GameSave * newGameSave = new GameSave(Client::Ref().GetSaveData(saveId, 0));
-				newSave->SetGameSave(newGameSave);
-				if(!newSave)
-					throw std::runtime_error("Could not load save");
-
-				gameController->LoadSave(newSave);
-				delete newSave;
-			}
-			else
-			{
-				throw std::runtime_error("No Save ID");
-			}
-		}
-		}
-		catch (std::exception & e)
-		{
-			new ErrorMessage("Error", "Invalid save link");
-		}
+		BlueScreen("Unhandled exception");
 	}
-
-	EngineProcess();
-	
-#ifdef WIN
-	SaveWindowPosition();
 #endif
 	
 	ui::Engine::Ref().CloseWindow();

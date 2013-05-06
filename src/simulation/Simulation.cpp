@@ -602,9 +602,9 @@ int Simulation::FloodINST(int x, int y, int fullc, int cm)
 			{
 				if ((pmap[y-1][x]&0xFF)==cm && !parts[pmap[y-1][x]>>8].life)
 				{
-					if (x==x1 || x==x2 || y>=YRES-CELL-1 || !PMAP_CMP_CONDUCTIVE(pmap[y+1][x], cm))
+					if (x==x1 || x==x2 || y>=YRES-CELL-1 || !PMAP_CMP_CONDUCTIVE(pmap[y+1][x], cm) || PMAP_CMP_CONDUCTIVE(pmap[y+1][x+1], cm) || PMAP_CMP_CONDUCTIVE(pmap[y+1][x-1], cm))
 					{
-						// if at the end of a horizontal section, or if it's a T junction
+						// if at the end of a horizontal section, or if it's a T junction or not a 1px wire crossing
 						coord_stack[coord_stack_size][0] = x;
 						coord_stack[coord_stack_size][1] = y-1;
 						coord_stack_size++;
@@ -641,9 +641,9 @@ int Simulation::FloodINST(int x, int y, int fullc, int cm)
 			{
 				if ((pmap[y+1][x]&0xFF)==cm && !parts[pmap[y+1][x]>>8].life)
 				{
-					if (x==x1 || x==x2 || y<0 || !PMAP_CMP_CONDUCTIVE(pmap[y-1][x], cm))
+					if (x==x1 || x==x2 || y<0 || !PMAP_CMP_CONDUCTIVE(pmap[y-1][x], cm) || PMAP_CMP_CONDUCTIVE(pmap[y-1][x+1], cm) || PMAP_CMP_CONDUCTIVE(pmap[y-1][x-1], cm))
 					{
-						// if at the end of a horizontal section, or if it's a T junction
+						// if at the end of a horizontal section, or if it's a T junction or not a 1px wire crossing
 						coord_stack[coord_stack_size][0] = x;
 						coord_stack[coord_stack_size][1] = y+1;
 						coord_stack_size++;
@@ -2918,11 +2918,7 @@ int Simulation::create_part(int p, int x, int y, int tv)
 
 	parts[i].dcolour = 0;
 	parts[i].flags = 0;
-	if (t==PT_GLAS)
-	{
-		parts[i].pavg[1] = pv[y/CELL][x/CELL];
-	}
-	else if (t==PT_QRTZ)
+	if (t == PT_GLAS || t == PT_QRTZ || t == PT_TUGN)
 	{
 		parts[i].pavg[1] = pv[y/CELL][x/CELL];
 	}
@@ -2988,8 +2984,6 @@ int Simulation::create_part(int p, int x, int y, int tv)
 				parts[i].life = rand()%50+60;
 				break;
 			case PT_QRTZ:
-				parts[i].tmp = (rand()%11);
-				break;
 			case PT_PQRT:
 				parts[i].tmp = (rand()%11);
 				break;
@@ -3337,7 +3331,7 @@ void Simulation::delete_part(int x, int y, int flags)//calls kill_part with the 
 
 void Simulation::update_particles_i(int start, int inc)
 {
-	int i, j, x, y, t, nx, ny, r, surround_space, s, lt, rt, nt, nnx, nny, q, golnum, goldelete, z, neighbors, createdsomething;
+	int i, j, x, y, t, nx, ny, r, surround_space, s, lt, rt, nt, nnx, nny, q, golnum, z, neighbors;
 	float mv, dx, dy, ix, iy, lx, ly, nrx, nry, dp, ctemph, ctempl, gravtot;
 	int fin_x, fin_y, clear_x, clear_y, stagnant;
 	float fin_xf, fin_yf, clear_xf, clear_yf;
@@ -3541,9 +3535,7 @@ void Simulation::update_particles_i(int start, int inc)
 	//game of life!
 	if (elementCount[PT_LIFE]>0&&++CGOL>=GSPEED)//GSPEED is frames per generation
 	{
-		int createdsomething = 0;
 		CGOL=0;
-		ISGOL=0;
 		//TODO: maybe this should only loop through active particles
 		for (ny=CELL; ny<YRES-CELL; ny++)
 		{//go through every particle and set neighbor map
@@ -3555,34 +3547,31 @@ void Simulation::update_particles_i(int start, int inc)
 					gol[ny][nx] = 0;
 					continue;
 				}
-				else
+				if ((r&0xFF)==PT_LIFE)
 				{
-					if (parts[r>>8].type==PT_LIFE)
-					{
-						golnum = parts[r>>8].ctype+1;
-						if (golnum<=0 || golnum>NGOL) {
-							kill_part(r>>8);
-							continue;
-						}
-						if (parts[r>>8].tmp == grule[golnum][9]-1) {
-							gol[ny][nx] = golnum;
-							for ( nnx=-1; nnx<2; nnx++)
+					golnum = parts[r>>8].ctype+1;
+					if (golnum<=0 || golnum>NGOL) {
+						kill_part(r>>8);
+						continue;
+					}
+					gol[ny][nx] = golnum;
+					if (parts[r>>8].tmp == grule[golnum][9]-1) {
+						for ( nnx=-1; nnx<2; nnx++)
+						{
+							for ( nny=-1; nny<2; nny++)//it will count itself as its own neighbor, which is needed, but will have 1 extra for delete check
 							{
-								for ( nny=-1; nny<2; nny++)//it will count itself as its own neighbor, which is needed, but will have 1 extra for delete check
+								int adx = ((nx+nnx+XRES-3*CELL)%(XRES-2*CELL))+CELL;
+								int ady = ((ny+nny+YRES-3*CELL)%(YRES-2*CELL))+CELL;
+								rt = pmap[ady][adx];
+								if (!rt || (rt&0xFF)==PT_LIFE)
 								{
-									rt = pmap[((ny+nny+YRES-3*CELL)%(YRES-2*CELL))+CELL][((nx+nnx+XRES-3*CELL)%(XRES-2*CELL))+CELL];
-									if (!rt || (rt&0xFF)==PT_LIFE)
-									{
-										gol2[((ny+nny+YRES-3*CELL)%(YRES-2*CELL))+CELL][((nx+nnx+XRES-3*CELL)%(XRES-2*CELL))+CELL][golnum] ++;
-										gol2[((ny+nny+YRES-3*CELL)%(YRES-2*CELL))+CELL][((nx+nnx+XRES-3*CELL)%(XRES-2*CELL))+CELL][0] ++;
-									}
+									gol2[ady][adx][golnum] ++;
+									gol2[ady][adx][0] ++;
 								}
 							}
-						} else {
-							parts[r>>8].tmp --;
-							if (parts[r>>8].tmp<=0)
-								parts[r>>8].type = PT_NONE;//TODO: move delete into an update function, change to kill_part
 						}
+					} else {
+						parts[r>>8].tmp --;
 					}
 				}
 			}
@@ -3592,27 +3581,35 @@ void Simulation::update_particles_i(int start, int inc)
 			for (nx=CELL; nx<XRES-CELL; nx++)
 			{
 				r = pmap[ny][nx];
-				neighbors = gol2[ny][nx][0];
-				if (neighbors==0 || !((r&0xFF)==PT_LIFE || !(r&0xFF)))
+				if (r && (r&0xFF)!=PT_LIFE)
 					continue;
-				for (golnum = 1; golnum<=NGOL; golnum++)
+				neighbors = gol2[ny][nx][0];
+				if (neighbors)
 				{
-					goldelete = neighbors;
-					if (gol[ny][nx]==0&&grule[golnum][goldelete]>=2&&gol2[ny][nx][golnum]>=(goldelete%2)+goldelete/2)
+					golnum = gol[ny][nx];
+					if (!r)
 					{
-						if (create_part(-1, nx, ny, PT_LIFE|((golnum-1)<<8)))
-							createdsomething = 1;
+						//Find which type we can try and create
+						for (golnum = 1; golnum<=NGOL; golnum++)
+						{
+							if (grule[golnum][neighbors]>=2 && gol2[ny][nx][golnum]>=(neighbors%2)+neighbors/2)
+							{
+								create_part(-1, nx, ny, PT_LIFE|((golnum-1)<<8));
+								break;
+							}
+						}
 					}
-					else if (gol[ny][nx]==golnum&&(grule[golnum][goldelete-1]==0||grule[golnum][goldelete-1]==2))//subtract 1 because it counted itself
+					else if (grule[golnum][neighbors-1]==0 || grule[golnum][neighbors-1]==2)//subtract 1 because it counted itself
 					{
 						if (parts[r>>8].tmp==grule[golnum][9]-1)
 							parts[r>>8].tmp --;
 					}
-					if (r && parts[r>>8].tmp<=0)
-						parts[r>>8].type = PT_NONE;//TODO: move delete into an update function, change to kill_part
+					for ( z = 0; z<=NGOL; z++)
+						gol2[ny][nx][z] = 0;//this improves performance A LOT compared to the memset, i was getting ~23 more fps with this.
 				}
-				for ( z = 0; z<=NGOL; z++)
-					gol2[ny][nx][z] = 0;//this improves performance A LOT compared to the memset, i was getting ~23 more fps with this.
+				//we still need to kill things with 0 neighbors (higher state life)
+				if (r && parts[r>>8].tmp<=0)
+						kill_part(r>>8);
 			}
 		}
 		//memset(gol2, 0, sizeof(gol2));
@@ -4006,6 +4003,9 @@ void Simulation::update_particles_i(int start, int inc)
 							if (parts[i].ctype>0 && parts[i].ctype<PT_NUM && parts[i].ctype!=PT_LAVA) {
 								if (parts[i].ctype==PT_THRM&&pt>=elements[PT_BMTL].HighTemperature) s = 0;
 								else if ((parts[i].ctype==PT_VIBR || parts[i].ctype==PT_BVBR) && pt>=273.15f) s = 0;
+								else if (parts[i].ctype==PT_TUGN) {
+									if (pt>3695.0) s = 0;
+								}
 								else if (elements[parts[i].ctype].HighTemperatureTransition==PT_LAVA) {
 									if (pt>=elements[parts[i].ctype].HighTemperature) s = 0;
 								}
@@ -4084,7 +4084,6 @@ void Simulation::update_particles_i(int start, int inc)
 			if (t==PT_LIFE)
 			{
 				parts[i].temp = restrict_flt(parts[i].temp-50.0f, MIN_TEMP, MAX_TEMP);
-				//ISGOL=1;//means there is a life particle on screen
 			}
 			if (t==PT_WIRE)
 			{

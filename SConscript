@@ -267,6 +267,7 @@ sources+=Glob("src/gui/*/*.cpp")
 sources+=Glob("src/simulation/elements/*.cpp")
 sources+=Glob("src/simulation/tools/*.cpp")
 sources+=Glob("src/client/requestbroker/*.cpp")
+sources+=Glob("src/socket/*.c")
 
 #for source in sources:
 #	print str(source)
