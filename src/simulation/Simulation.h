@@ -74,10 +74,9 @@ public:
 	int emp_decor;
 	//Gol sim
 	int CGOL;
-	int ISGOL;
 	int GSPEED;
 	unsigned char gol[YRES][XRES];
-	unsigned char gol2[YRES][XRES][NGOL+1];
+	unsigned short gol2[YRES][XRES][9];
 
 	
 	float (*vx)[XRES/CELL];		// Velocity in the X direction for each cell
@@ -89,7 +88,6 @@ public:
 	float& velocityy(int x, int y);
 	float& pressure(int x, int y);
 	float& ambientheat(int x, int y);
-
 	//Gravity sim
 	float *gravx;//gravx[(YRES/CELL) * (XRES/CELL)];
 	float *gravy;//gravy[(YRES/CELL) * (XRES/CELL)];
