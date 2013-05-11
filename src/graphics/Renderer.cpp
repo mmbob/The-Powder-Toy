@@ -1168,26 +1168,13 @@ void Renderer::prepare_alpha(int size, float intensity)
 template <int AuraSize, Renderer::AuraPixelFunction PixelFunction>
 void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize])
 {
-/*	auto drawglowline = [&](int xMul, int yMul)
-	{
-		for (int dy = 1; dy < (yMul != 2 ? AuraSize : 0); ++dy)
-			for (int dx = 1; dx < (xMul != 2 ? AuraSize : 0); ++dx)
-				render->addpixel(nx + xMul * dx, ny + yMul * dy, colr, colg, colb, colas[dx + dy - 1]);
-	};
-	auto drawglowround = [&](int xMul, int yMul)
-	{
-		for (int dy = 1; dy < AuraSize; ++dy)
-			for (int dx = 1; dx < AuraSize; ++dx)
-				render->addpixel(nx + xMul * dx, ny + yMul * dy, colr, colg, colb, rounded[dy][dx]);
-	};*/
-
-		// Check for elements of the same type in each direction to know where we need to draw an aura
+	// Check for elements of the same type in each direction to know where we need to draw an aura
 	bool left = (sim->pmap[ny][nx - 1] & 0xFF) != t;
 	bool right = (sim->pmap[ny][nx + 1] & 0xFF) != t;
 	bool top = (sim->pmap[ny - 1][nx] & 0xFF) != t;
 	bool bottom = (sim->pmap[ny + 1][nx] & 0xFF) != t;
 
-		// Draw in each empty direction
+	// Draw in each empty direction
 	if (left)
 	{
 		for (int x = 1; x < AuraSize; ++x)
@@ -1208,7 +1195,7 @@ void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg,
 		for (int y = 1; y < AuraSize; ++y)
 			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y]);
 	}
-		// Fill in the corners
+	// Fill in the corners
 	if (left && top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
@@ -1256,16 +1243,6 @@ void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, 
 	}
 	else
 	{
-/*		int _colas[GlowSize] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
-		int _rounded[GlowSize][GlowSize] = 
-		{
-			{0, 0, 0, 0, 0, 0},
-			{0, colas[2], colas[2], colas[3], colas[4], colas[5]},
-			{0, colas[2], colas[3], colas[3], colas[5], colas[5]},
-			{0, colas[3], colas[3], colas[4], colas[5], colas[5]},
-			{0, colas[4], colas[5], colas[5], colas[5], colas[6]},
-			{0, colas[5], colas[5], colas[5], colas[6], colas[6]},
-		};*/
 		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
 		int _rounded[GlowSize][GlowSize] = 
 		{
@@ -1278,8 +1255,6 @@ void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, 
 		rounded = _rounded;
 	}
 	render_aura<GlowSize, &Renderer::addpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
-
-	addpixel(nx, ny, colr, colg, colb, cola);
 }
 
 void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, int cola)
@@ -1303,16 +1278,6 @@ void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, 
 	}
 	else
 	{
-/*		int _colas[GlowSize] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
-		int _rounded[GlowSize][GlowSize] = 
-		{
-			{0, 0, 0, 0, 0, 0},
-			{0, colas[2], colas[2], colas[3], colas[4], colas[5]},
-			{0, colas[2], colas[3], colas[3], colas[5], colas[5]},
-			{0, colas[3], colas[3], colas[4], colas[5], colas[5]},
-			{0, colas[4], colas[5], colas[5], colas[5], colas[6]},
-			{0, colas[5], colas[5], colas[5], colas[6], colas[6]},
-		};*/
 		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
 		int _rounded[BlurSize][BlurSize] = 
 		{
@@ -1329,17 +1294,34 @@ void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, 
 
 void Renderer::render_blob(int nx, int ny, int t, int colr, int colg, int colb, int cola)
 {
-	setpixel(nx, ny, PIXRGB(colr, colg, colb));
+	const int BlobSize = 2;
+	int (*colas);
+	int (*rounded)[BlobSize];
 
-	blendpixel(nx+1, ny, colr, colg, colb, 223);
-	blendpixel(nx-1, ny, colr, colg, colb, 223);
-	blendpixel(nx, ny+1, colr, colg, colb, 223);
-	blendpixel(nx, ny-1, colr, colg, colb, 223);
+	if (cola == 255)
+	{
+		static int _colas[3] = {255, 223, 112};
+		static int _rounded[BlobSize][BlobSize] = 
+		{
+			{0, 0},
+			{0, _colas[2]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	else
+	{
+		int _colas[3] = {cola, 223 * cola / 255, 112 * cola / 255};
+		int _rounded[BlobSize][BlobSize] = 
+		{
+			{0, 0},
+			{0, _colas[2]},
+		};
+		colas = _colas;
+		rounded = _rounded;
+	}
+	render_aura<BlobSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
 
-	blendpixel(nx+1, ny-1, colr, colg, colb, 112);
-	blendpixel(nx-1, ny-1, colr, colg, colb, 112);
-	blendpixel(nx+1, ny+1, colr, colg, colb, 112);
-	blendpixel(nx-1, ny+1, colr, colg, colb, 112);
 }
 
 void Renderer::render_parts()
@@ -1479,6 +1461,8 @@ void Renderer::render_parts()
 					pixel_mode |= PMODE_BLEND;
 				if (render_mode & PMODE_BLOB)
 					pixel_mode |= PMODE_BLOB;
+				if ((pixel_mode & PMODE_BLOB) || (pixel_mode & PMODE_GLOW) || (pixel_mode & PMODE_BLUR))
+					pixel_mode |= PMODE_FLAT;
 
 				pixel_mode &= render_mode;
 
@@ -1581,7 +1565,7 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PSPEC_STICKMAN)
 				{
-					char buff[4];  //Buffer for HP
+					char buff[16];  //Buffer for HP
 					int s;
 					int legr, legg, legb;
 					playerst *cplayer;
@@ -1597,7 +1581,7 @@ void Renderer::render_parts()
 					if (mousePosX>(nx-3) && mousePosX<(nx+3) && mousePosY<(ny+3) && mousePosY>(ny-3)) //If mouse is in the head
 					{
 						sprintf(buff, "%3d", sim->parts[i].life);  //Show HP
-						drawtext(mousePosX-8-2*(sim->parts[i].life<100)-2*(sim->parts[i].life<10), mousePosY-12, buff, 255, 255, 255, 255);
+						drawtext(mousePosX - (5 * strlen(buff)) / 2, mousePosY-12, buff, 255, 255, 255, 255);
 					}
 
 					if (colour_mode!=COLOUR_HEAT)
