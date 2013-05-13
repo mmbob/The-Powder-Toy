@@ -1366,7 +1366,7 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PSPEC_STICKMAN)
 				{
-					char buff[4];  //Buffer for HP
+					char buff[16];  //Buffer for HP, can handle any 32 bit integer
 					int s;
 					int legr, legg, legb;
 					playerst *cplayer;
