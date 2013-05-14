@@ -24,6 +24,12 @@ class Simulation;
 class Renderer;
 
 class QuickOption;
+
+struct ToolGroup
+{
+	Tool * Tools[3];
+};
+
 class ToolSelection
 {
 public:
@@ -61,6 +67,7 @@ private:
 	Simulation * sim;
 	Renderer * ren;
 	Tool * lastTool;
+	ToolGroup toolGroups[10];
 	Tool ** activeTools;
 	Tool * decoToolset[3];
 	Tool * regularToolset[3];
@@ -155,6 +162,9 @@ public:
 
 	Tool * GetActiveTool(int selection);
 	void SetActiveTool(int selection, Tool * tool);
+
+	ToolGroup GetToolGroup(int groupID);
+	void SetToolGroup(int groupID, ToolGroup tools);
 
 	bool GetPaused();
 	void SetPaused(bool pauseState);

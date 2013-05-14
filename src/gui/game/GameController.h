@@ -100,6 +100,8 @@ public:
 	void SetActiveMenu(Menu * menu);
 	std::vector<Menu*> GetMenuList();
 	void SetActiveTool(int toolSelection, Tool * tool);
+	void SetToolGroup(int groupID);
+	void ApplyToolGroup(int groupID);
 	void ActiveToolChanged(int toolSelection, Tool *tool);
 	void SetActiveColourPreset(int preset);
 	void SetColour(ui::Colour colour);

@@ -1448,6 +1448,18 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 	{
 		c->LoadRenderPreset(key-'0');
 	}
+	else if (key >= SDLK_KP0 && key <= SDLK_KP9)
+	{
+		int groupID = key - SDLK_KP0;
+		if (ctrl)
+		{
+			c->SetToolGroup(groupID);
+		}
+		else
+		{
+			c->ApplyToolGroup(groupID);
+		}
+	}
 }
 
 void GameView::OnKeyRelease(int key, Uint16 character, bool shift, bool ctrl, bool alt)

@@ -38,7 +38,6 @@ GameModel::GameModel():
 	ren = new Renderer(ui::Engine::Ref().g, sim);
 
 	activeTools = regularToolset;
-
 	std::fill(decoToolset, decoToolset+3, (Tool*)NULL);
 	std::fill(regularToolset, regularToolset+3, (Tool*)NULL);
 
@@ -140,6 +139,18 @@ GameModel::GameModel():
 	colourPresets.push_back(ui::Colour(255, 0, 0));
 	colourPresets.push_back(ui::Colour(0, 255, 0));
 	colourPresets.push_back(ui::Colour(0, 0, 255));
+	
+
+	for (int i = 0; i < 10; ++i)
+	{
+		std::string prefName = "ToolGroups." + std::string(1, i + '0');
+		std::vector<std::string> prefValue = Client::Ref().GetPrefStringArray(prefName);
+		if (prefValue.size() != 3)
+			continue;
+
+		for (int j = 0; j < 3; ++j)
+			toolGroups[i].Tools[j] = GetToolFromIdentifier(prefValue[j]);
+	}
 }
 
 GameModel::~GameModel()
@@ -162,6 +173,16 @@ GameModel::~GameModel()
 	Client::Ref().SetPref("Decoration.Green", (int)colour.Green);
 	Client::Ref().SetPref("Decoration.Blue", (int)colour.Blue);
 	Client::Ref().SetPref("Decoration.Alpha", (int)colour.Alpha);
+
+	for (int i = 0; i < 10; ++i)
+	{
+		std::string prefName = "ToolGroups." + std::string(1, i + '0');
+		std::vector<std::string> prefValue;
+		for (int j = 0; j < 3; ++j)
+			prefValue.push_back(toolGroups[i].Tools[j]->GetIdentifier());
+
+		Client::Ref().SetPref(prefName, prefValue);
+	}
 
 	for(int i = 0; i < menuList.size(); i++)
 	{
@@ -335,6 +356,9 @@ void GameModel::BuildMenus()
 	regularToolset[1] = GetToolFromIdentifier("DEFAULT_PT_NONE");
 	regularToolset[2] = GetToolFromIdentifier("DEFAULT_UI_SAMPLE");
 
+	for (int i = 0; i < 10; ++i)
+		for (int j = 0; j < 3; ++j)
+			toolGroups[i].Tools[j] = regularToolset[j];
 
 	if(activeToolIdentifiers[0].length())
 		regularToolset[0] = GetToolFromIdentifier(activeToolIdentifiers[0]);
@@ -533,6 +557,16 @@ void GameModel::SetActiveTool(int selection, Tool * tool)
 {
 	activeTools[selection] = tool;
 	notifyActiveToolsChanged();
+}
+
+ToolGroup GameModel::GetToolGroup(int groupID)
+{
+	return toolGroups[groupID];
+}
+
+void GameModel::SetToolGroup(int groupID, ToolGroup tools)
+{
+	toolGroups[groupID] = tools;
 }
 
 vector<QuickOption*> GameModel::GetQuickOptions()

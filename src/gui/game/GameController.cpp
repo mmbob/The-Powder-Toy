@@ -970,6 +970,71 @@ void GameController::SetActiveTool(int toolSelection, Tool * tool)
 	}
 }
 
+void GameController::SetToolGroup(int groupID)
+{
+	ToolGroup group;
+	for (int i = 0; i < 3; ++i)
+		group.Tools[i] = gameModel->GetActiveTool(i);
+	gameModel->SetToolGroup(groupID, group);
+
+	std::string infoTip = "Saving to hotkey #" + std::string(1, groupID + '0') + ": ";
+	for (int i = 0; i < 3; ++i)
+	{
+		Tool * tool = group.Tools[i];
+		std::string identifier = tool->GetIdentifier();
+
+		std::vector<Tool*> walls = gameModel->GetMenuList()[SC_WALL]->GetToolList();
+
+		if (identifier == "DEFAULT_PT_NONE")
+			infoTip += "Clear";
+		else if (identifier == "DEFAULT_UI_SAMPLE")
+			infoTip += "Sample";
+		else if (std::find(walls.begin(), walls.end(), tool) != walls.end())
+			infoTip += "Wall";
+		else
+			infoTip += tool->GetName();
+		
+		if (i == 1)
+			infoTip += ", and ";
+		else if (i == 0)
+			infoTip += ", ";
+	}
+
+	gameModel->SetInfoTip(infoTip);
+}
+
+void GameController::ApplyToolGroup(int groupID)
+{
+	ToolGroup group = gameModel->GetToolGroup(groupID);
+	for (int i = 0; i < 3; ++i)
+		gameModel->SetActiveTool(i, group.Tools[i]);
+
+	std::string infoTip = "The tools have been set to: ";
+	for (int i = 0; i < 3; ++i)
+	{
+		Tool * tool = group.Tools[i];
+		std::string identifier = tool->GetIdentifier();
+
+		std::vector<Tool*> walls = gameModel->GetMenuList()[SC_WALL]->GetToolList();
+
+		if (identifier == "DEFAULT_PT_NONE")
+			infoTip += "Clear";
+		else if (identifier == "DEFAULT_UI_SAMPLE")
+			infoTip += "Sample";
+		else if (std::find(walls.begin(), walls.end(), tool) != walls.end())
+			infoTip += "Wall";
+		else
+			infoTip += tool->GetName();
+		
+		if (i == 1)
+			infoTip += ", and ";
+		else if (i == 0)
+			infoTip += ", ";
+	}
+
+	gameModel->SetInfoTip(infoTip);
+}
+
 void GameController::OpenSearch()
 {
 	if(!search)
