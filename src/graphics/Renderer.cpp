@@ -1169,56 +1169,60 @@ template <int AuraSize, Renderer::AuraPixelFunction PixelFunction>
 void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize])
 {
 	// Check for elements of the same type in each direction to know where we need to draw an aura
-	bool left = (sim->pmap[ny][nx - 1] & 0xFF) != t;
-	bool right = (sim->pmap[ny][nx + 1] & 0xFF) != t;
-	bool top = (sim->pmap[ny - 1][nx] & 0xFF) != t;
-	bool bottom = (sim->pmap[ny + 1][nx] & 0xFF) != t;
+	const bool left = (sim->pmap[ny][nx - 1] & 0xFF) != t;
+	const bool right = (sim->pmap[ny][nx + 1] & 0xFF) != t;
+	const bool top = (sim->pmap[ny - 1][nx] & 0xFF) != t;
+	const bool bottom = (sim->pmap[ny + 1][nx] & 0xFF) != t;
+
+	const int intensity = 4 - ((left ? 1 : 0) + (right ? 1 : 0) + (top ? 1 : 0) + (bottom ? 1 : 0) + 1) / 2;
+	if (intensity == 5)
+		return;
 
 	// Draw in each empty direction
 	if (left)
 	{
 		for (int x = 1; x < AuraSize; ++x)
-			(this->*PixelFunction)(nx - x, ny, colr, colg, colb, colas[x]);
+			(this->*PixelFunction)(nx - x, ny, colr, colg, colb, colas[x] * intensity / 4);
 	}
 	if (right)
 	{
 		for (int x = 1; x < AuraSize; ++x)
-			(this->*PixelFunction)(nx + x, ny, colr, colg, colb, colas[x]);
+			(this->*PixelFunction)(nx + x, ny, colr, colg, colb, colas[x] * intensity / 4);
 	}
 	if (top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
-			(this->*PixelFunction)(nx, ny - y, colr, colg, colb, colas[y]);
+			(this->*PixelFunction)(nx, ny - y, colr, colg, colb, colas[y] * intensity / 4);
 	}
 	if (bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
-			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y]);
+			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y] * intensity / 4);
 	}
 	// Fill in the corners
 	if (left && top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx - x, ny - y, colr, colg, colb, rounded[y][x]);
+				(this->*PixelFunction)(nx - x, ny - y, colr, colg, colb, rounded[y][x] * intensity / 4);
 	}
 	if (left && bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx - x, ny + y, colr, colg, colb, rounded[y][x]);
+				(this->*PixelFunction)(nx - x, ny + y, colr, colg, colb, rounded[y][x] * intensity / 4);
 	}
 	if (right && top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx + x, ny - y, colr, colg, colb, rounded[y][x]);
+				(this->*PixelFunction)(nx + x, ny - y, colr, colg, colb, rounded[y][x] * intensity / 4);
 	}
 	if (right && bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx + x, ny + y, colr, colg, colb, rounded[y][x]);
+				(this->*PixelFunction)(nx + x, ny + y, colr, colg, colb, rounded[y][x] * intensity / 4);
 	}
 }
 
@@ -1230,7 +1234,7 @@ void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, 
 
 	if (cola == 255)
 	{
-		static int _colas[7] = {255, 160, 48, 24, 16, 5, 0};
+		static int _colas[7] = {255, 96, 48, 24, 16, 5, 0};
 		static int _rounded[GlowSize][GlowSize] = 
 		{
 			{0, 0, 0, 0},
@@ -1243,7 +1247,7 @@ void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, 
 	}
 	else
 	{
-		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _colas[7] = {cola, 96 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
 		int _rounded[GlowSize][GlowSize] = 
 		{
 			{0, 0, 0, 0},
@@ -1265,31 +1269,33 @@ void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, 
 
 	if (cola == 255)
 	{
-		static int _colas[7] = {255, 160, 48, 24, 16, 5, 0};
+		static int _colas[7] = {255, 92, 48, 24, 16, 5, 0};
 		static int _rounded[BlurSize][BlurSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[2], _colas[3]},
 			{0, _colas[2], _colas[3], _colas[4]},
 			{0, _colas[3], _colas[4], _colas[5]},
+			{0, _colas[4], _colas[5], _colas[6]},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
 	else
 	{
-		int _colas[7] = {cola, 160 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _colas[7] = {cola, 92 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
 		int _rounded[BlurSize][BlurSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[2], _colas[3]},
 			{0, _colas[2], _colas[3], _colas[4]},
 			{0, _colas[3], _colas[4], _colas[5]},
+			{0, _colas[4], _colas[5], _colas[6]},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
 	render_aura<BlurSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
+
+	blendpixel(nx, ny, colr, colg, colb, colas[1]);
 }
 
 void Renderer::render_blob(int nx, int ny, int t, int colr, int colg, int colb, int cola)
@@ -1326,6 +1332,30 @@ void Renderer::render_blob(int nx, int ny, int t, int colr, int colg, int colb, 
 
 void Renderer::render_parts()
 {
+	enum AuraRenderType
+	{
+		AURA_Glow,
+		AURA_Blur,
+		AURA_Blob,
+	};
+
+	struct AuraRenderInfo
+	{
+		int PartIndex;
+		int x;
+		int y;
+		int colr;
+		int colg;
+		int colb;
+		int cola;
+		AuraRenderType Type;
+	};
+
+	static AuraRenderInfo aura_render_map[YRES * XRES];
+	static AuraRenderInfo glow_render_map[YRES * XRES];
+	int aura_render_map_index = 0;
+	int glow_render_map_index = 0;
+
 	int deca, decr, decg, decb, cola, colr, colg, colb, firea, firer, fireg, fireb, pixel_mode, q, i, t, nx, ny, x, y, caddress;
 	int orbd[4] = {0, 0, 0, 0}, orbl[4] = {0, 0, 0, 0};
 	float gradv, flicker, fnx, fny;
@@ -1461,8 +1491,6 @@ void Renderer::render_parts()
 					pixel_mode |= PMODE_BLEND;
 				if (render_mode & PMODE_BLOB)
 					pixel_mode |= PMODE_BLOB;
-				if ((pixel_mode & PMODE_BLOB) || (pixel_mode & PMODE_GLOW) || (pixel_mode & PMODE_BLUR))
-					pixel_mode |= PMODE_FLAT;
 
 				pixel_mode &= render_mode;
 
@@ -1661,15 +1689,40 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PMODE_BLOB)
 				{
-					render_blob(nx, ny, t, colr, colg, colb, cola);
+					setpixel(nx, ny, PIXRGB(colr, colg, colb));
+					AuraRenderInfo& ari = aura_render_map[aura_render_map_index++];
+					ari.PartIndex = i;
+					ari.x = nx;
+					ari.y = ny;
+					ari.colr = colr;
+					ari.colg = colg;
+					ari.colb = colb;
+					ari.cola = cola;
+					ari.Type = AURA_Blob;
 				}
 				if(pixel_mode & PMODE_GLOW)
 				{
-					render_glow(nx, ny, t, colr, colg, colb, cola);
+					AuraRenderInfo& ari = glow_render_map[glow_render_map_index++];
+					ari.PartIndex = i;
+					ari.x = nx;
+					ari.y = ny;
+					ari.colr = colr;
+					ari.colg = colg;
+					ari.colb = colb;
+					ari.cola = cola;
+					ari.Type = AURA_Glow;
 				}
 				if(pixel_mode & PMODE_BLUR)
 				{
-					render_blur(nx, ny, t, colr, colg, colb, cola);
+					AuraRenderInfo& ari = aura_render_map[aura_render_map_index++];
+					ari.PartIndex = i;
+					ari.x = nx;
+					ari.y = ny;
+					ari.colr = colr;
+					ari.colg = colg;
+					ari.colb = colb;
+					ari.cola = cola;
+					ari.Type = AURA_Blur;
 				}
 				if(pixel_mode & PMODE_SPARK)
 				{
@@ -1812,6 +1865,28 @@ void Renderer::render_parts()
 #endif
 			}
 		}
+	}
+	
+	for (int i = 0; i < aura_render_map_index; ++i)
+	{
+		AuraRenderInfo ari = aura_render_map[i];
+
+		switch (ari.Type)
+		{
+		case AURA_Blob:
+			render_blob(ari.x, ari.y, parts[ari.PartIndex].type, ari.colr, ari.colg, ari.colb, ari.cola);
+			break;
+
+		case AURA_Blur:
+			render_blur(ari.x, ari.y, parts[ari.PartIndex].type, ari.colr, ari.colg, ari.colb, ari.cola);
+			break;
+		}
+	}
+	for (int i = 0; i < glow_render_map_index; ++i)
+	{
+		AuraRenderInfo ari = glow_render_map[i];
+		addpixel(ari.x, ari.y, ari.colr, ari.colg, ari.colb, 192 * ari.cola / 255);
+		render_glow(ari.x, ari.y, sim->parts[ari.PartIndex].type, ari.colr, ari.colg, ari.colb, ari.cola);
 	}
 }
 
