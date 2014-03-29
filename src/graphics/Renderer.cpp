@@ -1166,7 +1166,7 @@ void Renderer::prepare_alpha(int size, float intensity)
 }
 
 template <int AuraSize, Renderer::AuraPixelFunction PixelFunction>
-void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize])
+int __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize], const int alphas[5])
 {
 	// Check for elements of the same type in each direction to know where we need to draw an aura
 	const bool left = (sim->pmap[ny][nx - 1] & 0xFF) != t;
@@ -1174,187 +1174,228 @@ void __fastcall Renderer::render_aura(int nx, int ny, int t, int colr, int colg,
 	const bool top = (sim->pmap[ny - 1][nx] & 0xFF) != t;
 	const bool bottom = (sim->pmap[ny + 1][nx] & 0xFF) != t;
 
-	const int intensity = 4 - ((left ? 1 : 0) + (right ? 1 : 0) + (top ? 1 : 0) + (bottom ? 1 : 0) + 1) / 2;
+	const int intensity = 4 - ((left ? 1 : 0) + (right ? 1 : 0) + (top ? 1 : 0) + (bottom ? 1 : 0)) + 1;
 	if (intensity == 5)
-		return;
+		return 5;
+	
+	int alpha = alphas[intensity];
 
 	// Draw in each empty direction
 	if (left)
 	{
 		for (int x = 1; x < AuraSize; ++x)
-			(this->*PixelFunction)(nx - x, ny, colr, colg, colb, colas[x] * intensity / 4);
+			(this->*PixelFunction)(nx - x, ny, colr, colg, colb, colas[x] * alpha / 256);
 	}
 	if (right)
 	{
 		for (int x = 1; x < AuraSize; ++x)
-			(this->*PixelFunction)(nx + x, ny, colr, colg, colb, colas[x] * intensity / 4);
+			(this->*PixelFunction)(nx + x, ny, colr, colg, colb, colas[x] * alpha / 256);
 	}
 	if (top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
-			(this->*PixelFunction)(nx, ny - y, colr, colg, colb, colas[y] * intensity / 4);
+			(this->*PixelFunction)(nx, ny - y, colr, colg, colb, colas[y] * alpha / 256);
 	}
 	if (bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
-			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y] * intensity / 4);
+			(this->*PixelFunction)(nx, ny + y, colr, colg, colb, colas[y] * alpha / 256);
 	}
 	// Fill in the corners
 	if (left && top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx - x, ny - y, colr, colg, colb, rounded[y][x] * intensity / 4);
+				(this->*PixelFunction)(nx - x, ny - y, colr, colg, colb, rounded[y][x] * alpha / 256);
 	}
 	if (left && bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx - x, ny + y, colr, colg, colb, rounded[y][x] * intensity / 4);
+				(this->*PixelFunction)(nx - x, ny + y, colr, colg, colb, rounded[y][x] * alpha / 256);
 	}
 	if (right && top)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx + x, ny - y, colr, colg, colb, rounded[y][x] * intensity / 4);
+				(this->*PixelFunction)(nx + x, ny - y, colr, colg, colb, rounded[y][x] * alpha / 256);
 	}
 	if (right && bottom)
 	{
 		for (int y = 1; y < AuraSize; ++y)
 			for (int x = 1; x < AuraSize; ++x)
-				(this->*PixelFunction)(nx + x, ny + y, colr, colg, colb, rounded[y][x] * intensity / 4);
+				(this->*PixelFunction)(nx + x, ny + y, colr, colg, colb, rounded[y][x] * alpha / 256);
 	}
+
+	return intensity;
 }
 
 void Renderer::render_glow(int nx, int ny, int t, int colr, int colg, int colb, int cola)
 {
+	const int AN = 4;	// Aura multiplier numerator
+	const int AD = 4;	// Aura multiplier denominator
 	const int GlowSize = 4;
 	int (*colas);
 	int (*rounded)[GlowSize];
-
 	if (cola == 255)
 	{
-		static int _colas[7] = {255, 96, 48, 24, 16, 5, 0};
+		static int _colas[GlowSize] = {0, cola * AN / AD, cola / 4 * AN / AD, cola / 9 * AN / AD};
 		static int _rounded[GlowSize][GlowSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[2], _colas[3]},
-			{0, _colas[2], _colas[3], _colas[4]},
-			{0, _colas[3], _colas[4], _colas[5]},
+			{0, cola /  2 * AN / AD, cola /  5 * AN / AD, cola / 10 * AN / AD},
+			{0, cola /  5 * AN / AD, cola /  8 * AN / AD, 0},
+			{0, cola / 10 * AN / AD, 0, 0},
 		};
+
 		colas = _colas;
 		rounded = _rounded;
 	}
 	else
 	{
-		int _colas[7] = {cola, 96 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _colas[GlowSize] = {0, cola * AN / AD, cola / 4 * AN / AD,  cola / 9 * AN / AD};
 		int _rounded[GlowSize][GlowSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[2], _colas[3]},
-			{0, _colas[2], _colas[3], _colas[4]},
-			{0, _colas[3], _colas[4], _colas[5]},
+			{0, cola /  2 * AN / AD, cola /  5 * AN / AD, cola / 10 * AN / AD},
+			{0, cola /  5 * AN / AD, cola /  8 * AN / AD, 0},
+			{0, cola / 10 * AN / AD, 0, 0},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
-	render_aura<GlowSize, &Renderer::addpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
+	
+	const int alphas[5] = {0, 96, 128, 192, 256};
+	int intensity = render_aura<GlowSize, &Renderer::addpixel>(nx, ny, t, colr, colg, colb, colas, rounded, alphas);
+	colr = std::min<int>(intensity * (colr * cola) >> 8, 255);
+	colg = std::min<int>(intensity * (colg * cola) >> 8, 255);
+	colb = std::min<int>(intensity * (colb * cola) >> 8, 255);
+	addpixel(nx, ny, colr, colg, colb, cola);
 }
 
 void Renderer::render_blur(int nx, int ny, int t, int colr, int colg, int colb, int cola)
 {
+	const int AN = 3;	// Aura multiplier numerator
+	const int AD = 4;	// Aura multiplier denominator
 	const int BlurSize = 4;
 	int (*colas);
 	int (*rounded)[BlurSize];
 
 	if (cola == 255)
 	{
-		static int _colas[7] = {255, 92, 48, 24, 16, 5, 0};
+		static int _colas[BlurSize] = {0, cola * AN / AD, cola / 4 * AN / AD, cola / 9 * AN / AD};
 		static int _rounded[BlurSize][BlurSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[3], _colas[4]},
-			{0, _colas[3], _colas[4], _colas[5]},
-			{0, _colas[4], _colas[5], _colas[6]},
+			{0, cola /  2 * AN / AD, cola /  5 * AN / AD, cola / 10 * AN / AD},
+			{0, cola /  5 * AN / AD, cola /  8 * AN / AD, cola / 13 * AN / AD},
+			{0, cola / 10 * AN / AD, cola / 13 * AN / AD, 0},
 		};
+
 		colas = _colas;
 		rounded = _rounded;
 	}
 	else
 	{
-		int _colas[7] = {cola, 92 * cola / 255, 48 * cola / 255, 24 * cola / 255, 16 * cola / 255, 5 * cola / 255, 0};
+		int _colas[BlurSize] = {0, cola * AN / AD, cola / 4 * AN / AD,  cola / 9 * AN / AD};
 		int _rounded[BlurSize][BlurSize] = 
 		{
 			{0, 0, 0, 0},
-			{0, _colas[2], _colas[3], _colas[4]},
-			{0, _colas[3], _colas[4], _colas[5]},
-			{0, _colas[4], _colas[5], _colas[6]},
+			{0, cola /  2 * AN / AD, cola /  5 * AN / AD, cola / 10 * AN / AD},
+			{0, cola /  5 * AN / AD, cola /  8 * AN / AD, cola / 13 * AN / AD},
+			{0, cola / 10 * AN / AD, cola / 13 * AN / AD, 0},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
-	render_aura<BlurSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
-
-	blendpixel(nx, ny, colr, colg, colb, colas[1]);
+	
+	const int alphas[] = {0, 256 * 1 / 4, 256 * 2 / 5, 256 * 3 / 5, 256 * 4 / 5, 256, 256};
+	int intensity = render_aura<BlurSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded, alphas);
+	blendpixel(nx, ny, colr, colg, colb, cola * alphas[intensity + 1] / 256);
 }
 
 void Renderer::render_blob(int nx, int ny, int t, int colr, int colg, int colb, int cola)
 {
+	const int AN = 1;	// Aura multiplier numerator
+	const int AD = 1;	// Aura multiplier denominator
 	const int BlobSize = 2;
 	int (*colas);
 	int (*rounded)[BlobSize];
 
 	if (cola == 255)
 	{
-		static int _colas[3] = {255, 223, 112};
+		static int _colas[BlobSize] = {0, 223 * AN / AD};
 		static int _rounded[BlobSize][BlobSize] = 
 		{
 			{0, 0},
-			{0, _colas[2]},
+			{0, 112 * AN / AD},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
 	else
 	{
-		int _colas[3] = {cola, 223 * cola / 255, 112 * cola / 255};
+		int _colas[BlobSize] = {0, 223 * cola / 255 * AN / AD};
 		int _rounded[BlobSize][BlobSize] = 
 		{
 			{0, 0},
-			{0, _colas[2]},
+			{0, cola / 2 * AN / AD},
 		};
 		colas = _colas;
 		rounded = _rounded;
 	}
-	render_aura<BlobSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded);
-
+	const int alphas[5] = {0, 256, 256, 256, 256};
+	render_aura<BlobSize, &Renderer::blendpixel>(nx, ny, t, colr, colg, colb, colas, rounded, alphas);
 }
 
 void Renderer::render_parts()
 {
-	enum AuraRenderType
+	enum AuraRenderType : int8_t
 	{
 		AURA_Glow,
 		AURA_Blur,
 		AURA_Blob,
 	};
 
+#pragma pack(push)
+#pragma pack(1)
 	struct AuraRenderInfo
 	{
 		int PartIndex;
-		int x;
-		int y;
-		int colr;
-		int colg;
-		int colb;
-		int cola;
+		short x;
+		short y;
+		uint8_t colr;
+		uint8_t colg;
+		uint8_t colb;
+		uint8_t cola;
 		AuraRenderType Type;
 	};
+#pragma pack(pop)
 
-	static AuraRenderInfo aura_render_map[YRES * XRES];
-	static AuraRenderInfo glow_render_map[YRES * XRES];
-	int aura_render_map_index = 0;
-	int glow_render_map_index = 0;
+	static AuraRenderInfo* aura_render_list = new AuraRenderInfo[0];
+	static AuraRenderInfo* glow_render_list = new AuraRenderInfo[0];
+	static int render_list_size = 0;
+
+	int aura_render_index = 0;
+	int glow_render_index = 0;
+
+	int num_parts = std::max<int>(sim->NUM_PARTS, sim->parts_lastActiveIndex);
+	if (render_list_size < num_parts)
+	{
+		render_list_size = std::min<int>(num_parts + 2000, YRES * XRES);
+		delete aura_render_list;
+		delete glow_render_list;
+		aura_render_list = new AuraRenderInfo[render_list_size];
+		glow_render_list = new AuraRenderInfo[render_list_size];
+	}
+	else if (render_list_size > num_parts + 4000)
+	{
+		render_list_size = num_parts;
+		delete aura_render_list;
+		delete glow_render_list;
+		aura_render_list = new AuraRenderInfo[render_list_size];
+		glow_render_list = new AuraRenderInfo[render_list_size];
+	}
 
 	int deca, decr, decg, decb, cola, colr, colg, colb, firea, firer, fireg, fireb, pixel_mode, q, i, t, nx, ny, x, y, caddress;
 	int orbd[4] = {0, 0, 0, 0}, orbl[4] = {0, 0, 0, 0};
@@ -1690,7 +1731,8 @@ void Renderer::render_parts()
 				if(pixel_mode & PMODE_BLOB)
 				{
 					setpixel(nx, ny, PIXRGB(colr, colg, colb));
-					AuraRenderInfo& ari = aura_render_map[aura_render_map_index++];
+
+					AuraRenderInfo& ari = aura_render_list[aura_render_index++];
 					ari.PartIndex = i;
 					ari.x = nx;
 					ari.y = ny;
@@ -1702,7 +1744,7 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PMODE_GLOW)
 				{
-					AuraRenderInfo& ari = glow_render_map[glow_render_map_index++];
+					AuraRenderInfo& ari = glow_render_list[glow_render_index++];
 					ari.PartIndex = i;
 					ari.x = nx;
 					ari.y = ny;
@@ -1714,7 +1756,7 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PMODE_BLUR)
 				{
-					AuraRenderInfo& ari = aura_render_map[aura_render_map_index++];
+					AuraRenderInfo& ari = aura_render_list[aura_render_index++];
 					ari.PartIndex = i;
 					ari.x = nx;
 					ari.y = ny;
@@ -1867,9 +1909,9 @@ void Renderer::render_parts()
 		}
 	}
 	
-	for (int i = 0; i < aura_render_map_index; ++i)
+	for (int i = 0; i < aura_render_index; ++i)
 	{
-		AuraRenderInfo ari = aura_render_map[i];
+		AuraRenderInfo ari = aura_render_list[i];
 
 		switch (ari.Type)
 		{
@@ -1882,10 +1924,9 @@ void Renderer::render_parts()
 			break;
 		}
 	}
-	for (int i = 0; i < glow_render_map_index; ++i)
+	for (int i = 0; i < glow_render_index; ++i)
 	{
-		AuraRenderInfo ari = glow_render_map[i];
-		addpixel(ari.x, ari.y, ari.colr, ari.colg, ari.colb, 192 * ari.cola / 255);
+		AuraRenderInfo ari = glow_render_list[i];
 		render_glow(ari.x, ari.y, sim->parts[ari.PartIndex].type, ari.colr, ari.colg, ari.colb, ari.cola);
 	}
 }

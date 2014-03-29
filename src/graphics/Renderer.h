@@ -82,7 +82,7 @@ public:
 	typedef void (__fastcall Renderer::*AuraPixelFunction)(int, int, int, int, int, int);
 
 	template <int AuraSize, AuraPixelFunction PixelFunction>
-	void __fastcall render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize]);
+	int __fastcall render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize], const int alphas[5]);
 	void render_glow(int nx, int ny, int t, int colr, int colg, int colb, int cola);
 	void render_blur(int nx, int ny, int t, int colr, int colg, int colb, int cola);
 	void render_blob(int x, int y, int t, int colr, int colg, int colb, int cola);
