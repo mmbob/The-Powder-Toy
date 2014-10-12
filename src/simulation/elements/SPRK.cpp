@@ -1,4 +1,5 @@
 #include "simulation/Elements.h"
+
 //#TPT-Directive ElementClass Element_SPRK PT_SPRK 15
 Element_SPRK::Element_SPRK()
 {
@@ -83,7 +84,7 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 		if (parts[i].life==1)
 		{
 			nearp = sim->nearest_part(i, PT_ETRD, -1);
-			if (nearp!=-1 && sim->parts_avg(i, nearp, PT_INSL)!=PT_INSL)
+			if (nearp!=-1 && sim->parts_avg(i, nearp, PT_INSL) != PT_INSL)
 			{
 				sim->CreateLine(x, y, (int)(parts[nearp].x+0.5f), (int)(parts[nearp].y+0.5f), PT_PLSM);
 				sim->part_change_type(i,x,y,ct);
@@ -173,8 +174,18 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 				if (!r)
 					continue;
 				receiver = r&0xFF;
+				
+				bool conducts = sim->elements[receiver].Properties & PROP_CONDUCTS;
+				if (!conducts &&
+					receiver != PT_SWCH && receiver != PT_SPRK && receiver != PT_PUMP &&
+					receiver != PT_GPMP && receiver != PT_HSWC && receiver != PT_PBCN &&
+					receiver != PT_LCRY && receiver != PT_PPIP && receiver != PT_NTCT &&
+					receiver != PT_PTCT && receiver != PT_INWR && receiver != PT_INST &&
+					receiver != PT_QRTZ)
+					continue;
+
 				sender = ct;
-				pavg = sim->parts_avg(r>>8, i,PT_INSL);
+				pavg = sim->fast_parts_avg(x, y, x + rx, y + ry, PT_INSL);
 				//receiver is the element SPRK is trying to conduct to
 				//sender is the element the SPRK is on
 				//First, some checks usually for (de)activation of elements
@@ -243,10 +254,14 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 					break;
 				}
 
-				if (pavg == PT_INSL) continue; //Insulation blocks everything past here
-				if (!((sim->elements[receiver].Properties&PROP_CONDUCTS)||receiver==PT_INST||receiver==PT_QRTZ)) continue; //Stop non-conducting recievers, allow INST and QRTZ as special cases
-				if (abs(rx)+abs(ry)>=4 &&sender!=PT_SWCH&&receiver!=PT_SWCH) continue; //Only switch conducts really far
-				if (receiver==sender && receiver!=PT_INST) goto conduct; //Everything conducts to itself, except INST.
+				if (pavg == PT_INSL)
+					continue; //Insulation blocks everything past here
+				if (!conducts && receiver != PT_INST && receiver != PT_QRTZ)
+					continue;
+				if (abs(rx) + abs(ry) >= 4 && sender != PT_SWCH && receiver != PT_SWCH)
+					continue; //Only switch conducts really far
+				if (receiver == sender && receiver != PT_INST)
+					goto conduct; //Everything conducts to itself, except INST.
 
 				//Sender cases, where elements can have specific outputs
 				switch (sender)
@@ -312,7 +327,7 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 				default:
 					break;
 				}
-			conduct:
+				conduct:
 				//Yay, passed normal conduction rules, check a few last things and change receiver to spark
 				if (receiver==PT_WATR||receiver==PT_SLTW) {
 					if (parts[r>>8].life==0 && parts[i].life<3)

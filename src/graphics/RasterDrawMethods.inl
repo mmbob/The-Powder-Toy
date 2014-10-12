@@ -155,35 +155,53 @@ TPT_INLINE void PIXELMETHODS_CLASS::xor_pixel(int x, int y)
 	int c;
 	if (x<0 || y<0 || x>=XRES || y>=YRES)
 		return;
-	c = vid[y*(VIDXRES)+x];
+	c = getpixel(x, y);
 	c = PIXB(c) + 3*PIXG(c) + 2*PIXR(c);
 	if (c<512)
-		vid[y*(VIDXRES)+x] = PIXPACK(0xC0C0C0);
+		setpixel(x, y, PIXPACK(0xC0C0C0));
 	else
-		vid[y*(VIDXRES)+x] = PIXPACK(0x404040);
+		setpixel(x, y, PIXPACK(0x404040));
 }
 
-void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
+TPT_INLINE void __fastcall PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
 {
 	pixel t;
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
 		return;
-	if (a!=255)
+	if (a!=255) 
 	{
-		t = vid[y*(VIDXRES)+x];
+		t = getpixel(x, y);
 		r = (a*r + (255-a)*PIXR(t)) >> 8;
 		g = (a*g + (255-a)*PIXG(t)) >> 8;
 		b = (a*b + (255-a)*PIXB(t)) >> 8;
 	}
-	vid[y*(VIDXRES)+x] = PIXRGB(r,g,b);
+	setpixel(x, y, PIXRGB(r, g, b));
 }
 
-void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
+TPT_INLINE int PIXELMETHODS_CLASS::getpixeloffset(int x, int y)
 {
-	pixel t;
+	return y * (VIDXRES) + x;
+}
+
+TPT_INLINE pixel PIXELMETHODS_CLASS::getpixel(int x, int y)
+{
+	return vid[getpixeloffset(x, y)];
+}
+
+TPT_INLINE void __fastcall PIXELMETHODS_CLASS::setpixel(int x, int y, pixel p)
+{
+	vid[getpixeloffset(x, y)] = p;
+/*	vid[2 * y * (VIDXRES) + 2 * x] = p;
+	vid[2 * y * (VIDXRES) + (2 * x + 1)] = p;
+	vid[(2 * y + 1) * (VIDXRES) + 2 * x] = p;
+	vid[(2 * y + 1) * (VIDXRES) + (2 * x + 1)] = p;*/
+}
+
+TPT_INLINE void __fastcall PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
+{
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
 		return;
-	t = vid[y*(VIDXRES)+x];
+	pixel t = getpixel(x, y);
 	r = (a*r + 255*PIXR(t)) >> 8;
 	g = (a*g + 255*PIXG(t)) >> 8;
 	b = (a*b + 255*PIXB(t)) >> 8;
@@ -193,7 +211,7 @@ void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
 		g = 255;
 	if (b>255)
 		b = 255;
-	vid[y*(VIDXRES)+x] = PIXRGB(r,g,b);
+	setpixel(x, y, PIXRGB(r, g, b));
 }
 
 void PIXELMETHODS_CLASS::xor_line(int x1, int y1, int x2, int y2)
@@ -460,7 +478,7 @@ void PIXELMETHODS_CLASS::draw_image(pixel *img, int x, int y, int w, int h, int 
 		for (j=0; j<h; j++)
 			for (i=0; i<w; i++)
 			{
-				vid[(y+j)*(VIDXRES)+(x+i)] = *img;
+				setpixel(x + i, y + j, *img);
 				img++;
 			}
 	else

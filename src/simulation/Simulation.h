@@ -143,11 +143,15 @@ public:
 	bool FloodFillPmapCheck(int x, int y, int type);
 	int flood_prop(int x, int y, size_t propoffset, PropertyValue propvalue, StructProperty::PropertyType proptype);
 	int flood_water(int x, int y, int i, int originaly, int check);
-	int FloodINST(int x, int y, int fullc, int cm);
 	void detach(int i);
 	void part_change_type(int i, int x, int y, int t);
-	//int InCurrentBrush(int i, int j, int rx, int ry);
-	//int get_brush_flags();
+	int create_part_add_props(int p, int x, int y, int tv, int rx, int ry);
+		/*
+		Creates a particle
+		p = Index into particle array; -1 to have a position chosen for the caller
+		x, y = Position of particle
+		t = Type of particle
+		*/
 	int create_part(int p, int x, int y, int t);
 	void delete_part(int x, int y);
 	void get_sign_pos(int i, int *x0, int *y0, int *w, int *h);
@@ -155,6 +159,14 @@ public:
 	int is_wire_off(int x, int y);
 	void set_emap(int x, int y);
 	int parts_avg(int ci, int ni, int t);
+		/*
+		Faster average of particles.  Only allows integer positions and integer offsets
+		x, y = Position of particle
+		dx, dy = Change in position
+		t = Type to check for (?)
+		*/
+	int fast_parts_avg(int x1, int y1, int x2, int y2, int t);
+	int FloodINST(int x, int y, int fullc, int cm);
 	void create_arc(int sx, int sy, int dx, int dy, int midpoints, int variance, int type, int flags);
 	int nearest_part(int ci, int t, int max_d);
 	void update_particles_i(int start, int inc);

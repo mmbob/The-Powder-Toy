@@ -233,7 +233,6 @@ int Element_VIBR::graphics(GRAPHICS_FUNC_ARGS)
 		*firer = *colr;
 		*fireg = *colg;
 		*fireb = *colb;
-		*pixel_mode = PMODE_NONE;
 		*pixel_mode |= FIRE_BLEND;
 	}
 	else if (gradient < 100)

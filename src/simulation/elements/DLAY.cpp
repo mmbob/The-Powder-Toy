@@ -60,7 +60,7 @@ int Element_DLAY::update(UPDATE_FUNC_ARGS)
 			if (BOUNDS_CHECK && (rx || ry))
 			{
 				r = pmap[y+ry][x+rx];
-				if (!r || sim->parts_avg(r>>8, i,PT_INSL)==PT_INSL)
+				if (!r || sim->fast_parts_avg(x, y, x + rx, y + ry, PT_INSL)==PT_INSL)
 					continue;
 				if ((r&0xFF)==PT_SPRK && parts[i].life==0 && parts[r>>8].life>0 && parts[r>>8].life<4 && parts[r>>8].ctype==PT_PSCN)
 				{

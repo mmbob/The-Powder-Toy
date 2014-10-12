@@ -79,8 +79,15 @@ public:
 	void RenderBegin();
 	void RenderEnd();
 
+	typedef void (__fastcall Renderer::*AuraPixelFunction)(int, int, int, int, int, int);
+
+	template <int AuraSize, AuraPixelFunction PixelFunction>
+	int __fastcall render_aura(int nx, int ny, int t, int colr, int colg, int colb, const int colas[AuraSize], const int rounded[AuraSize][AuraSize], const int alphas[5]);
+	void render_glow(int nx, int ny, int t, int colr, int colg, int colb, int cola);
+	void render_blur(int nx, int ny, int t, int colr, int colg, int colb, int cola);
+	void render_blob(int x, int y, int t, int colr, int colg, int colb, int cola);
+
 	void RenderZoom();
-	void DrawBlob(int x, int y, unsigned char cr, unsigned char cg, unsigned char cb);
 	void DrawWalls();
 	void DrawSigns();
 	void render_gravlensing(pixel * source);
@@ -98,17 +105,25 @@ public:
 	void SetSample(int x, int y);
 
 #ifdef OGLR
+	GLint origBlendSrc, origBlendDst, prevFbo;
+	void render_opengl_begin();
+	void render_opengl(int pixel_mode, int nx, int ny, int colr, int colg, int colb, int cola);
+	void render_opengl_stickman(playerst* cplayer, int colour_mode, int nx, int ny, int t, int colr, int colg, int colb);
+	void render_opengl_end();
+
 	void checkShader(GLuint shader, char * shname);
 	void checkProgram(GLuint program, char * progname);
 	void loadShaders();
 	GLuint vidBuf,textTexture;
-	GLint prevFbo;
 #endif
 	pixel * vid;
 	pixel * persistentVid;
 	pixel * warpVid;
-	void blendpixel(int x, int y, int r, int g, int b, int a);
-	void addpixel(int x, int y, int r, int g, int b, int a);
+	int getpixeloffset(int x, int y);
+	pixel getpixel(int x, int y);
+	void __fastcall setpixel(int x, int y, pixel p);
+	void __fastcall blendpixel(int x, int y, int r, int g, int b, int a);
+	void __fastcall addpixel(int x, int y, int r, int g, int b, int a);
 
 	void draw_icon(int x, int y, Icon icon);
 

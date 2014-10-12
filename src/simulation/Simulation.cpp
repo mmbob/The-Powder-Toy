@@ -1814,28 +1814,33 @@ void Simulation::set_emap(int x, int y)
 
 int Simulation::parts_avg(int ci, int ni,int t)
 {
-	if (t==PT_INSL)//to keep electronics working
-	{
-		int pmr = pmap[((int)(parts[ci].y+0.5f) + (int)(parts[ni].y+0.5f))/2][((int)(parts[ci].x+0.5f) + (int)(parts[ni].x+0.5f))/2];
-		if (pmr)
-			return parts[pmr>>8].type;
-		else
-			return PT_NONE;
-	}
-	else
-	{
-		int pmr2 = pmap[(int)((parts[ci].y + parts[ni].y)/2+0.5f)][(int)((parts[ci].x + parts[ni].x)/2+0.5f)];//seems to be more accurate.
-		if (pmr2)
-		{
-			if (parts[pmr2>>8].type==t)
-				return t;
-		}
-		else
-			return PT_NONE;
-	}
+	int averageX = (int) (parts[ci].x + parts[ni].x) / 2;
+	int averageY = (int) (parts[ci].y + parts[ni].y) / 2;
+	int partIndex = pmap[averageY][averageX] >> 8;
+	if (partIndex == 0)
+		return PT_NONE;
+
+	if (t == PT_INSL)//to keep electronics working
+		return parts[partIndex].type;
+	else if (parts[partIndex].type==t)
+		return t;
 	return PT_NONE;
 }
 
+int Simulation::fast_parts_avg(int x1, int y1, int x2, int y2, int t)
+{
+	int averageX = (x1 + x2) / 2;
+	int averageY = (y1 + y2) / 2;
+	int partIndex = pmap[averageY][averageX] >> 8;
+	if (partIndex == 0)
+		return PT_NONE;
+
+	if (t == PT_INSL)//to keep electronics working
+		return parts[partIndex].type;
+	else if (parts[partIndex].type==t)
+		return t;
+	return PT_NONE;
+}
 
 int Simulation::nearest_part(int ci, int t, int max_d)
 {
