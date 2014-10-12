@@ -1,4 +1,5 @@
 #include "font.h"
+#include <math.h>
 
 int PIXELMETHODS_CLASS::drawtext_outline(int x, int y, const char *s, int r, int g, int b, int a)
 {
@@ -107,7 +108,7 @@ int PIXELMETHODS_CLASS::drawtext(int x, int y, std::string s, int r, int g, int 
 	return drawtext(x, y, s.c_str(), r, g, b, a);
 }
 
-TPT_INLINE int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, int b, int a)
+int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, int b, int a)
 {
 	int i, j, w, bn = 0, ba = 0;
 	char *rp = font_data + font_ptrs[c];
@@ -127,7 +128,7 @@ TPT_INLINE int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, i
 	return x + w;
 }
 
-TPT_NO_INLINE int PIXELMETHODS_CLASS::addchar(int x, int y, int c, int r, int g, int b, int a)
+int PIXELMETHODS_CLASS::addchar(int x, int y, int c, int r, int g, int b, int a)
 {
 	int i, j, w, bn = 0, ba = 0;
 	char *rp = font_data + font_ptrs[c];
@@ -162,7 +163,11 @@ TPT_INLINE void PIXELMETHODS_CLASS::xor_pixel(int x, int y)
 		setpixel(x, y, PIXPACK(0x404040));
 }
 
+<<<<<<< HEAD
 TPT_INLINE void __fastcall PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
+=======
+void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
+>>>>>>> upstream/master
 {
 	pixel t;
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
@@ -177,6 +182,7 @@ TPT_INLINE void __fastcall PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, i
 	setpixel(x, y, PIXRGB(r, g, b));
 }
 
+<<<<<<< HEAD
 TPT_INLINE int PIXELMETHODS_CLASS::getpixeloffset(int x, int y)
 {
 	return y * (VIDXRES) + x;
@@ -197,6 +203,9 @@ TPT_INLINE void __fastcall PIXELMETHODS_CLASS::setpixel(int x, int y, pixel p)
 }
 
 TPT_INLINE void __fastcall PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
+=======
+void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
+>>>>>>> upstream/master
 {
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
 		return;
@@ -374,6 +383,59 @@ void PIXELMETHODS_CLASS::fillrect(int x, int y, int w, int h, int r, int g, int 
 			blendpixel(x+i, y+j, r, g, b, a);
 }
 
+void PIXELMETHODS_CLASS::drawcircle(int x, int y, int rx, int ry, int r, int g, int b, int a)
+{
+	int yTop = ry, yBottom, i, j;
+	if (!rx)
+	{
+		for (j = -ry; j <= ry; j++)
+			blendpixel(x, y+j, r, g, b, a);
+		return;
+	}
+	for (i = 0; i <= rx; i++) {
+		yBottom = yTop;
+		while (pow(i-rx,2.0)*pow(ry,2.0) + pow(yTop-ry,2.0)*pow(rx,2.0) <= pow(rx,2.0)*pow(ry,2.0))
+			yTop++;
+		if (yBottom != yTop)
+			yTop--;
+		for (int j = yBottom; j <= yTop; j++)
+		{
+			blendpixel(x+i-rx, y+j-ry, r, g, b, a);
+			if (i != rx)
+				blendpixel(x-i+rx, y+j-ry, r, g, b, a);
+			if (j != ry)
+			{
+				blendpixel(x+i-rx, y-j+ry, r, g, b, a);
+				if (i != rx)
+					blendpixel(x-i+rx, y-j+ry, r, g, b, a);
+			}
+		}
+	}
+}
+
+void PIXELMETHODS_CLASS::fillcircle(int x, int y, int rx, int ry, int r, int g, int b, int a)
+{
+	int yTop = ry+1, yBottom, i, j;
+	if (!rx)
+	{
+		for (j = -ry; j <= ry; j++)
+			blendpixel(x, y+j, r, g, b, a);
+		return;
+	}
+	for (i = 0; i <= rx; i++)
+	{
+		while (pow(i-rx,2.0)*pow(ry,2.0) + pow(yTop-ry,2.0)*pow(rx,2.0) <= pow(rx,2.0)*pow(ry,2.0))
+			yTop++;
+		yBottom = 2*ry - yTop;
+		for (int j = yBottom+1; j < yTop; j++)
+		{
+			blendpixel(x+i-rx, y+j-ry, r, g, b, a);
+			if (i != rx)
+				blendpixel(x-i+rx, y+j-ry, r, g, b, a);
+		}
+	}
+}
+
 void PIXELMETHODS_CLASS::gradientrect(int x, int y, int width, int height, int r, int g, int b, int a, int r2, int g2, int b2, int a2)
 {
 
@@ -382,11 +444,38 @@ void PIXELMETHODS_CLASS::gradientrect(int x, int y, int width, int height, int r
 void PIXELMETHODS_CLASS::clearrect(int x, int y, int w, int h)
 {
 	int i;
+<<<<<<< HEAD
 	for (i = 1; i < h; i++)
 	{
 		int baseOffset = getpixeloffset(x + 1, y + i);
 		memset(vid + baseOffset, 0, PIXELSIZE * (w - 1));
 	}
+=======
+
+	// TODO: change calls to clearrect to use sensible meanings of x, y, w, h then remove these 4 lines
+	x += 1;
+	y += 1;
+	w -= 1;
+	h -= 1;
+
+	if (x+w > VIDXRES) w = VIDXRES-x;
+	if (y+h > VIDYRES) h = VIDYRES-y;
+	if (x<0)
+	{
+		w += x;
+		x = 0;
+	}
+	if (y<0)
+	{
+		h += y;
+		y = 0;
+	}
+	if (w<0 || h<0)
+		return;
+
+	for (i=0; i<h; i++)
+		memset(vid+(x+(VIDXRES)*(y+i)), 0, PIXELSIZE*w);
+>>>>>>> upstream/master
 }
 
 void PIXELMETHODS_CLASS::draw_image(pixel *img, int x, int y, int w, int h, int a)

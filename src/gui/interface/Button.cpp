@@ -59,12 +59,12 @@ bool Button::GetTogglable()
 	return isTogglable;
 }
 
-TPT_NO_INLINE bool Button::GetToggleState()
+bool Button::GetToggleState()
 {
 	return toggle;
 }
 
-TPT_NO_INLINE void Button::SetToggleState(bool state)
+void Button::SetToggleState(bool state)
 {
 	toggle = state;
 }
@@ -153,6 +153,10 @@ void Button::OnMouseUnclick(int x, int y, unsigned int button)
 	{
 		if(isButtonDown)
 		{
+			if(isTogglable)
+			{
+				toggle = !toggle;
+			}
 			isButtonDown = false;
 			DoAction();
 		}
@@ -173,10 +177,6 @@ void Button::OnMouseClick(int x, int y, unsigned int button)
 		return;
 	if(button == 1)
 	{
-		if(isTogglable)
-		{
-			toggle = !toggle;
-		}
 		isButtonDown = true;
 	}
 	else if(button == 3)
@@ -196,7 +196,7 @@ void Button::OnMouseEnter(int x, int y)
 
 void Button::OnMouseHover(int x, int y)
 {
-	if(toolTip.length()>0 && GetParentWindow())
+	if(Enabled && toolTip.length()>0 && GetParentWindow())
 	{
 		GetParentWindow()->ToolTip(this, ui::Point(x, y), toolTip);
 	}

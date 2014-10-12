@@ -1,4 +1,5 @@
-#include "../data/font.h" 
+#include "../data/font.h"
+#include <math.h>
 
 int PIXELMETHODS_CLASS::drawtext_outline(int x, int y, const char *s, int r, int g, int b, int a)
 {
@@ -132,7 +133,7 @@ int PIXELMETHODS_CLASS::drawtext(int x, int y, std::string s, int r, int g, int 
 	return drawtext(x, y, s.c_str(), r, g, b, a);
 }
 
-TPT_INLINE int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, int b, int a)
+int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, int b, int a)
 {
 	int i, j, w, bn = 0, ba = 0;
 	char *rp = font_data + font_ptrs[c];
@@ -162,7 +163,7 @@ TPT_INLINE int PIXELMETHODS_CLASS::drawchar(int x, int y, int c, int r, int g, i
 	return x + w;
 }
 
-TPT_NO_INLINE int PIXELMETHODS_CLASS::addchar(int x, int y, int c, int r, int g, int b, int a)
+int PIXELMETHODS_CLASS::addchar(int x, int y, int c, int r, int g, int b, int a)
 {
 	int i, j, w, bn = 0, ba = 0;
 	char *rp = font_data + font_ptrs[c];
@@ -199,12 +200,12 @@ TPT_INLINE void PIXELMETHODS_CLASS::xor_pixel(int x, int y)
 	//OpenGL doesn't support single pixel manipulation, there are ways around it, but with poor performance
 }
 
-TPT_INLINE void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
+void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
 {
 	//OpenGL doesn't support single pixel manipulation, there are ways around it, but with poor performance
 }
 
-TPT_INLINE void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
+void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
 {
 	//OpenGL doesn't support single pixel manipulation, there are ways around it, but with poor performance
 }
@@ -314,6 +315,59 @@ void PIXELMETHODS_CLASS::fillrect(int x, int y, int width, int height, int r, in
 	glEnd();
 }
 
+void PIXELMETHODS_CLASS::drawcircle(int x, int y, int rx, int ry, int r, int g, int b, int a)
+{
+	int yTop = ry, yBottom, i, j;
+	if (!rx)
+	{
+		for (j = -ry; j <= ry; j++)
+			blendpixel(x, y+j, r, g, b, a);
+		return;
+	}
+	for (i = 0; i <= rx; i++) {
+		yBottom = yTop;
+		while (pow(i-rx,2.0)*pow(ry,2.0) + pow(yTop-ry,2.0)*pow(rx,2.0) <= pow(rx,2.0)*pow(ry,2.0))
+			yTop++;
+		if (yBottom != yTop)
+			yTop--;
+		for (int j = yBottom; j <= yTop; j++)
+		{
+			blendpixel(x+i-rx, y+j-ry, r, g, b, a);
+			if (i != rx)
+				blendpixel(x-i+rx, y+j-ry, r, g, b, a);
+			if (j != ry)
+			{
+				blendpixel(x+i-rx, y-j+ry, r, g, b, a);
+				if (i != rx)
+					blendpixel(x-i+rx, y-j+ry, r, g, b, a);
+			}
+		}
+	}
+}
+
+void PIXELMETHODS_CLASS::fillcircle(int x, int y, int rx, int ry, int r, int g, int b, int a)
+{
+	int yTop = ry+1, yBottom, i, j;
+	if (!rx)
+	{
+		for (j = -ry; j <= ry; j++)
+			blendpixel(x, y+j, r, g, b, a);
+		return;
+	}
+	for (i = 0; i <= rx; i++)
+	{
+		while (pow(i-rx,2.0)*pow(ry,2.0) + pow(yTop-ry,2.0)*pow(rx,2.0) <= pow(rx,2.0)*pow(ry,2.0))
+			yTop++;
+		yBottom = 2*ry - yTop;
+		for (int j = yBottom+1; j < yTop; j++)
+		{
+			blendpixel(x+i-rx, y+j-ry, r, g, b, a);
+			if (i != rx)
+				blendpixel(x-i+rx, y+j-ry, r, g, b, a);
+		}
+	}
+}
+
 void PIXELMETHODS_CLASS::gradientrect(int x, int y, int width, int height, int r, int g, int b, int a, int r2, int g2, int b2, int a2)
 {
 	glBegin(GL_QUADS);
@@ -359,4 +413,9 @@ void PIXELMETHODS_CLASS::draw_image(pixel *img, int x, int y, int w, int h, int 
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
+}
+
+void PIXELMETHODS_CLASS::draw_image(VideoBuffer * vidBuf, int x, int y, int a)
+{
+	draw_image(vidBuf->Buffer, x, y, vidBuf->Width, vidBuf->Height, a);
 }
