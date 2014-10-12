@@ -163,11 +163,7 @@ TPT_INLINE void PIXELMETHODS_CLASS::xor_pixel(int x, int y)
 		setpixel(x, y, PIXPACK(0x404040));
 }
 
-<<<<<<< HEAD
 TPT_INLINE void __fastcall PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
-=======
-void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
->>>>>>> upstream/master
 {
 	pixel t;
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
@@ -182,7 +178,6 @@ void PIXELMETHODS_CLASS::blendpixel(int x, int y, int r, int g, int b, int a)
 	setpixel(x, y, PIXRGB(r, g, b));
 }
 
-<<<<<<< HEAD
 TPT_INLINE int PIXELMETHODS_CLASS::getpixeloffset(int x, int y)
 {
 	return y * (VIDXRES) + x;
@@ -203,9 +198,6 @@ TPT_INLINE void __fastcall PIXELMETHODS_CLASS::setpixel(int x, int y, pixel p)
 }
 
 TPT_INLINE void __fastcall PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
-=======
-void PIXELMETHODS_CLASS::addpixel(int x, int y, int r, int g, int b, int a)
->>>>>>> upstream/master
 {
 	if (x<0 || y<0 || x>=VIDXRES || y>=VIDYRES)
 		return;
@@ -444,13 +436,6 @@ void PIXELMETHODS_CLASS::gradientrect(int x, int y, int width, int height, int r
 void PIXELMETHODS_CLASS::clearrect(int x, int y, int w, int h)
 {
 	int i;
-<<<<<<< HEAD
-	for (i = 1; i < h; i++)
-	{
-		int baseOffset = getpixeloffset(x + 1, y + i);
-		memset(vid + baseOffset, 0, PIXELSIZE * (w - 1));
-	}
-=======
 
 	// TODO: change calls to clearrect to use sensible meanings of x, y, w, h then remove these 4 lines
 	x += 1;
@@ -475,7 +460,6 @@ void PIXELMETHODS_CLASS::clearrect(int x, int y, int w, int h)
 
 	for (i=0; i<h; i++)
 		memset(vid+(x+(VIDXRES)*(y+i)), 0, PIXELSIZE*w);
->>>>>>> upstream/master
 }
 
 void PIXELMETHODS_CLASS::draw_image(pixel *img, int x, int y, int w, int h, int a)

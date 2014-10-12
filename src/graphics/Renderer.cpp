@@ -1639,11 +1639,9 @@ void Renderer::render_parts()
 				}
 				if(pixel_mode & PSPEC_STICKMAN)
 				{
-<<<<<<< HEAD
 					char buff[16];  //Buffer for HP
 					int s;
-=======
->>>>>>> upstream/master
+
 					int legr, legg, legb;
 					playerst *cplayer;
 					if(t==PT_STKM)
@@ -1657,13 +1655,8 @@ void Renderer::render_parts()
 
 					if (mousePos.X>(nx-3) && mousePos.X<(nx+3) && mousePos.Y<(ny+3) && mousePos.Y>(ny-3)) //If mouse is in the head
 					{
-						char buff[12];  //Buffer for HP
 						sprintf(buff, "%3d", sim->parts[i].life);  //Show HP
-<<<<<<< HEAD
-						drawtext(mousePosX - (5 * strlen(buff)) / 2, mousePosY-12, buff, 255, 255, 255, 255);
-=======
-						drawtext(mousePos.X-8-2*(sim->parts[i].life<100)-2*(sim->parts[i].life<10), mousePos.Y-12, buff, 255, 255, 255, 255);
->>>>>>> upstream/master
+						drawtext(mousePos.X - (5 * strlen(buff)) / 2, mousePos.Y-12, buff, 255, 255, 255, 255);
 					}
 
 					if (colour_mode!=COLOUR_HEAT)
@@ -1950,9 +1943,7 @@ void Renderer::render_parts()
 					fire_g[ny/CELL][nx/CELL] = fireg;
 					fire_b[ny/CELL][nx/CELL] = fireb;
 				}
-<<<<<<< HEAD
 #endif
-=======
 				if(firea && (pixel_mode & FIRE_SPARK))
 				{
 #ifdef OGLR
@@ -1970,7 +1961,6 @@ void Renderer::render_parts()
 					fire_b[ny/CELL][nx/CELL] = (firea*fireb + (255-firea)*fire_b[ny/CELL][nx/CELL]) >> 8;
 #endif
 				}
->>>>>>> upstream/master
 			}
 		}
 	}
