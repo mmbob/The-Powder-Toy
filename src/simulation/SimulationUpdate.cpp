@@ -11,8 +11,8 @@
 #include "Gravity.h"
 #include "elements/Element.h"
 
-#include "cat/LuaScriptInterface.h"
-#include "cat/LuaScriptHelper.h"
+#include "lua/LuaScriptInterface.h"
+#include "lua/LuaScriptHelper.h"
 
 #include <SDL_thread.h>
 
@@ -41,29 +41,6 @@ void Simulation::update_particles_i(int start, int inc)
 	};
 
 	currentTick++;
-
-	bool lighting_ok = true;
-
-	if (lighting_recreate > 0)
-	{
-		for (int i = 0; i<=parts_lastActiveIndex; i++)
-		{
-			if (parts[i].type==PT_LIGH && parts[i].tmp2>0)
-			{
-				lighting_ok = false;
-				break;
-			}
-		}
-	}
-
-	if (lighting_ok)
-		lighting_recreate--;
-
-	if (lighting_recreate < 0)
-		lighting_recreate=1;
-
-	if (lighting_recreate > 21)
-		lighting_recreate=21;
 
 	//if (sys_pause&&!framerender)//do nothing if paused
 	//	return;
@@ -824,7 +801,7 @@ int part_temp_transition(Simulation* sim, int i, int x, int y)
 					typeChanged = false;
 				else if ((part->ctype == PT_VIBR || part->ctype == PT_BVBR) && temperature >= 273.15f)
 					typeChanged = false;
-				else if (part->ctype==PT_TUGN && temperature > 3695.0f)
+				else if (part->ctype==PT_TUNG && temperature > 3695.0f)
 					typeChanged = false;
 				else if (sim->elements[part->ctype].HighTemperatureTransition == PT_LAVA && temperature >= sim->elements[part->ctype].HighTemperature)
 				{
@@ -1219,21 +1196,22 @@ void part_movement(Simulation* sim, int i, int x, int y, int nt, int surround_sp
 
 			// this should be replaced with a particle type attribute ("photwl" or something)
 			if ((r & 0xFF) == PT_PSCN) part->ctype  = 0x00000000;
-			if ((r & 0xFF) == PT_NSCN) part->ctype  = 0x00000000;
-			if ((r & 0xFF) == PT_SPRK) part->ctype  = 0x00000000;
-			if ((r & 0xFF) == PT_COAL) part->ctype  = 0x00000000;
-			if ((r & 0xFF) == PT_BCOL) part->ctype  = 0x00000000;
-			if ((r & 0xFF) == PT_PLEX) part->ctype &= 0x1F00003E;
-			if ((r & 0xFF) == PT_NITR) part->ctype &= 0x0007C000;
-			if ((r & 0xFF) == PT_NBLE) part->ctype &= 0x3FFF8000;
-			if ((r & 0xFF) == PT_LAVA) part->ctype &= 0x3FF00000;
-			if ((r & 0xFF) == PT_ACID) part->ctype &= 0x1FE001FE;
-			if ((r & 0xFF) == PT_DUST) part->ctype &= 0x3FFFFFC0;
-			if ((r & 0xFF) == PT_SNOW) part->ctype &= 0x03FFFFFF;
-			if ((r & 0xFF) == PT_GOO)  part->ctype &= 0x3FFAAA00;
-			if ((r & 0xFF) == PT_PLNT) part->ctype &= 0x0007C000;
-			if ((r & 0xFF) == PT_PLUT) part->ctype &= 0x001FCE00;
-			if ((r & 0xFF) == PT_URAN) part->ctype &= 0x003FC000;
+			else if ((r & 0xFF) == PT_NSCN) part->ctype = 0x00000000;
+			else if ((r & 0xFF) == PT_SPRK) part->ctype = 0x00000000;
+			else if ((r & 0xFF) == PT_COAL) part->ctype = 0x00000000;
+			else if ((r & 0xFF) == PT_BCOL) part->ctype = 0x00000000;
+			else if ((r & 0xFF) == PT_PLEX) part->ctype &= 0x1F00003E;
+			else if ((r & 0xFF) == PT_NITR) part->ctype &= 0x0007C000;
+			else if ((r & 0xFF) == PT_NBLE) part->ctype &= 0x3FFF8000;
+			else if ((r & 0xFF) == PT_LAVA) part->ctype &= 0x3FF00000;
+			else if ((r & 0xFF) == PT_ACID) part->ctype &= 0x1FE001FE;
+			else if ((r & 0xFF) == PT_DUST) part->ctype &= 0x3FFFFFC0;
+			else if ((r & 0xFF) == PT_SNOW) part->ctype &= 0x03FFFFFF;
+			else if ((r & 0xFF) == PT_GOO)  part->ctype &= 0x3FFAAA00;
+			else if ((r & 0xFF) == PT_PLNT) part->ctype &= 0x0007C000;
+			else if ((r & 0xFF) == PT_PLUT) part->ctype &= 0x001FCE00;
+			else if ((r & 0xFF) == PT_URAN) part->ctype &= 0x003FC000;
+			else if ((r & 0xFF) == PT_GOLD) part->ctype &= 0x3C038100;
 
 			float nrx;
 			float nry;

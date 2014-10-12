@@ -50,8 +50,6 @@ Element_ELEC::Element_ELEC()
 int Element_ELEC::update(UPDATE_FUNC_ARGS)
  {
 	int r, rt, rx, ry, nb, rrx, rry;
-	parts[i].pavg[0] = x;
-	parts[i].pavg[1] = y;
 	for (rx=-2; rx<=2; rx++)
 		for (ry=-2; ry<=2; ry++)
 			if (BOUNDS_CHECK) {
@@ -90,6 +88,9 @@ int Element_ELEC::update(UPDATE_FUNC_ARGS)
 					else
 						sim->create_part(r>>8, x+rx, y+ry, PT_H2);
 					return 1;
+				case PT_PROT: // this is the correct reaction, not NEUT, but leaving NEUT in anyway
+					if (parts[r>>8].tmp2 & 0x1)
+						break;
 				case PT_NEUT:
 					sim->part_change_type(r>>8, x+rx, y+ry, PT_H2);
 					parts[r>>8].life = 0;
@@ -123,8 +124,6 @@ int Element_ELEC::update(UPDATE_FUNC_ARGS)
 			}
 	return 0;
 }
-
-
 
 //#TPT-Directive ElementHeader Element_ELEC static int graphics(GRAPHICS_FUNC_ARGS)
 int Element_ELEC::graphics(GRAPHICS_FUNC_ARGS)
